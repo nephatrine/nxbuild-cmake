@@ -1,0 +1,85 @@
+/*-------------------------------
+# SPDX-License-Identifier: ISC
+#
+# Copyright © @_CURRENT_YEAR@ Daniel Wolf <<nephatrine@gmail.com>>
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+# -----------------------------*/
+
+#ifndef @NX_GEH_INCLUDE_GUARD_NAME@
+#define @NX_GEH_INCLUDE_GUARD_NAME@
+
+#ifndef @NX_GEH_STATIC_DEFINE@
+#	ifndef @NX_GEH_EXPORT_MACRO_NAME@
+#		if defined( _WIN32 ) || defined(__CYGWIN__)
+#			ifdef @NX_GEH_DEFINE_SYMBOL@
+#				define @NX_GEH_EXPORT_MACRO_NAME@ __declspec( dllexport )
+#			else
+#				define @NX_GEH_EXPORT_MACRO_NAME@ __declspec( dllimport )
+#			endif
+#		elif defined( __GNUC__ ) || defined( __clang__ )
+#			ifdef @NX_GEH_DEFINE_SYMBOL@
+#				define @NX_GEH_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "default" ) ) )
+#			endif
+#		endif
+#	endif
+#	ifndef @NX_GEH_NO_EXPORT_MACRO_NAME@
+#		if !defined( _WIN32 ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
+#			ifdef @NX_GEH_DEFINE_SYMBOL@
+#				define @NX_GEH_NO_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "hidden" ) ) )
+#			endif
+#		endif
+#	endif
+#endif
+
+#ifndef @NX_GEH_EXPORT_MACRO_NAME@
+#	define @NX_GEH_EXPORT_MACRO_NAME@
+#endif
+#ifndef @NX_GEH_NO_EXPORT_MACRO_NAME@
+#	define @NX_GEH_NO_EXPORT_MACRO_NAME@
+#endif
+
+#ifndef @NX_GEH_EXPORT_MACRO_CNAME@
+#	ifdef __cplusplus
+#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern "C" @NX_GEH_EXPORT_MACRO_NAME@
+#	else
+#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern @NX_GEH_EXPORT_MACRO_NAME@
+#	endif
+#endif
+
+#ifndef @NX_GEH_DEPRECATED_MACRO_NAME@
+#	if defined( __cplusplus ) && ( __cplusplus >= 201402L )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@ [[deprecated]]
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
+#	elif defined( _MSC_VER )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@ __declspec( deprecated )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) __declspec( deprecated( msg ) )
+#	elif defined( __GNUC__ ) || defined( __clang__ )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@ __attribute__( ( __deprecated__ ) )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) __attribute__( ( __deprecated__( msg ) ) )
+#	elif defined( __cplusplus ) && ( __cplusplus >= 201103L )
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@ [[deprecated]]
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
+#	else
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@
+#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg )
+#	endif
+#endif
+
+#if @NX_GEH_DEFINE_NO_DEPRECATED@ /* DEFINE_NO_DEPRECATED */
+#	ifndef @NX_GEH_NO_DEPRECATED_MACRO_NAME@
+#		define @NX_GEH_NO_DEPRECATED_MACRO_NAME@
+#	endif
+#endif
+@NX_GEH_CUSTOM_CONTENT@
+#endif // @NX_GEH_INCLUDE_GUARD_NAME@

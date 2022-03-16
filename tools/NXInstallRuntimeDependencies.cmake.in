@@ -1,0 +1,37 @@
+# -------------------------------
+# SPDX-License-Identifier: ISC
+#
+# Copyright © @_CURRENT_YEAR@ Daniel Wolf <<nephatrine@gmail.com>>
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+# REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+# AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+# INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+# LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+# OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THIS SOFTWARE.
+# -------------------------------
+
+install(CODE [[
+	message(STATUS "Dependency Locations: @CMAKE_SYSTEM_LIBRARY_PATH@;@CMAKE_MINGW_SYSTEM_LIBRARY_PATH@;$ENV{MINGW_RUNTIME_PATH}")
+	file(GET_RUNTIME_DEPENDENCIES
+		RESOLVED_DEPENDENCIES_VAR _NX_DEPS_RESOLVED
+		UNRESOLVED_DEPENDENCIES_VAR _NX_DEPS_UNRESOLVED
+		@NX_GRD_TARGET_LIST@
+		DIRECTORIES @NX_GRD_SYSTEM_LIST@$ENV{MINGW_RUNTIME_PATH}
+		PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
+		POST_EXCLUDE_REGEXES ".*[\\/]system32[\\/].*\\.dll" ".*[\\/]build.*[\\/].*\\.dll"
+	)
+	foreach(_dep ${_NX_DEPS_RESOLVED})
+		message(STATUS "  [x] Resolved: ${_dep}")
+		set(@NX_PROJECT_NAME@_COMPONENT_RTM ON)
+		file(INSTALL ${_dep} DESTINATION "${CMAKE_INSTALL_PREFIX}/@NX_INSTALL_PATH_BINARIES@")
+	endforeach()
+	foreach(_dep ${_NX_DEPS_UNRESOLVED})
+		message(STATUS "  [ ] Not Found: ${_dep}")
+	endforeach()
+]] COMPONENT @PROJECT_NAME@_DEP)
