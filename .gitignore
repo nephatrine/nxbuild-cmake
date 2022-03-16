@@ -1,6 +1,13 @@
 .kdev4/*
 .vs/*
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+GitInfo.cmake
 build*/*
+*.code-workspace
 *.kate-swp
 *.kdev4
 *.swp
