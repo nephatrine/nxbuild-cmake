@@ -46,4 +46,5 @@ file(
 	"tools/*.cmake")
 nx_install_custom(CONTENTS tools COMPONENT DEV)
 
+nx_format_cmake()
 nx_project_end()
