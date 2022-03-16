@@ -24,7 +24,7 @@ project(
 	HOMEPAGE_URL "https://code.nephatrine.net/nephatrine/nxbuild-cmake"
 	LANGUAGES NONE)
 
-# NXBUILD
+# ==== Include NXBuild ====
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools")
 
@@ -32,9 +32,13 @@ include(NXProject)
 include(NXFormat)
 include(NXInstall)
 
+# ==== NXBuild Project ====
+
 nx_project_begin(
-	MAINTAINER "Daniel Wolf" CONTACT "nephatrine@gmail.com"
-	SUPPORT "${PROJECT_HOMEPAGE_URL}/issues" VENDOR "NephNET")
+	MAINTAINER "Daniel Wolf"
+	CONTACT "nephatrine@gmail.com"
+	SUPPORT "${PROJECT_HOMEPAGE_URL}/issues"
+	VENDOR "NephNET")
 
 file(
 	GLOB ${NX_PROJECT_NAME}_FILES_CMAKE
