@@ -1,0 +1,6 @@
+.kdev4/*
+.vs/*
+build*/*
+*.kate-swp
+*.kdev4
+*.swp
