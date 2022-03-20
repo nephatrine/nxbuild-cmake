@@ -196,6 +196,45 @@ function(nx_project_begin)
 		nx_set(${NX_PROJECT_NAME}_PROJECT_SUPPORT "${arg_project_support}")
 	endif()
 
+	# === Bundle Names ===
+
+	if(NOT DEFINED ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+		nx_set(${NX_PROJECT_NAME}_FOLDER_EXTERNAL "${${NX_PROJECT_NAME}_PROJECT_NAME}")
+
+		if(NX_TARGET_PLATFORM_MSDOS)
+			string(TOUPPER "${${NX_PROJECT_NAME}_FOLDER_EXTERNAL}" ${NX_PROJECT_NAME}_FOLDER_EXTERNAL)
+		endif()
+	endif()
+
+	if(NOT DEFINED ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+		nx_set(${NX_PROJECT_NAME}_FOLDER_INTERNAL "${${NX_PROJECT_NAME}_PROJECT_NAME}")
+
+		if(NX_TARGET_PLATFORM_DARWIN)
+			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_HOMEPAGE)
+				# TODO: This is probably not super robust.
+				string(REGEX REPLACE "^.+://|/.+" "" str_short_url "${${NX_PROJECT_NAME}_PROJECT_HOMEPAGE}")
+				string(REGEX REPLACE "[.]" ";" str_short_url "${str_short_url}")
+				list(REVERSE str_short_url)
+				list(GET str_short_url 0 1 str_short_url)
+				string(REGEX REPLACE ";" "." str_short_url "${str_short_url}")
+				string(TOLOWER "${str_short_url}.${${NX_PROJECT_NAME}_FOLDER_INTERNAL}" ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+			elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_VENDOR)
+				string(TOLOWER "net.${${NX_PROJECT_NAME}_PROJECT_VENDOR}.${${NX_PROJECT_NAME}_FOLDER_INTERNAL}"
+								${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+			else()
+				string(TOLOWER "net.unknown.${${NX_PROJECT_NAME}_FOLDER_INTERNAL}" ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+			endif()
+		elseif(NX_TARGET_PLATFORM_MSDOS)
+			string(TOUPPER "${${NX_PROJECT_NAME}_FOLDER_INTERNAL}" ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+		elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_VENDOR)
+				nx_set(${NX_PROJECT_NAME}_FOLDER_INTERNAL "${${NX_PROJECT_NAME}_PROJECT_VENDOR}/${${NX_PROJECT_NAME}_FOLDER_INTERNAL}")
+			endif()
+		elseif(NOT NX_TARGET_PLATFORM_HAIKU)
+			string(TOLOWER "${${NX_PROJECT_NAME}_FOLDER_INTERNAL}" ${NX_PROJECT_NAME}_FOLDER_INTERNAL)
+		endif()
+	endif()
+
 	# === Parse Full Versions ===
 
 	if(NOT DEFINED arg_project_version_api AND NOT DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION)
