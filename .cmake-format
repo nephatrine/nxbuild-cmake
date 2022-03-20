@@ -159,6 +159,29 @@ with section("parse"):
         'OUTPUT_NAME': '*',
         'STRIP': '*'
       }
+    },
+    'nx_test': {
+      'kwargs': {
+        'CMDSET': '*',
+        'ENVIRONMENT': '*',
+        'BUILDARGS': '*',
+        'WORKING_DIRECTORY': '*',
+        'EXPORTABLE': '*',
+        'CFLAGS': '*',
+        'CXXFLAGS': '*',
+        'DEFINES': '*',
+        'DEPENDS': '*',
+        'FEATURES': '*',
+        'INCLUDES': '*',
+        'LDFLAGS': '*',
+        'SOURCES': '*',
+        'GENERATE_EXPORT': '*',
+        'GENERATE_VERSION': '*',
+        'DEFINE_SYMBOL': '*',
+        'STATIC_DEFINE': '*',
+        'OUTPUT_NAME': '*',
+        'STRIP': '*'
+      }
     }
   }
 
