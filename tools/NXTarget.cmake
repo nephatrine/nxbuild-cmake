@@ -1498,7 +1498,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	unset(lst_pbs_module)
 	unset(lst_pbs_shared)
 
-	if(NOT NX_TARGET_PLATFORM_ANDROID AND NX_TARGET_BUILD_RELEASE)
+	if(NOT NX_TARGET_PLATFORM_ANDROID AND NOT NX_TARGET_PLATFORM_MSDOS AND NX_TARGET_BUILD_RELEASE)
 		if(DEFINED CMAKE_OBJCOPY
 			AND EXISTS "${CMAKE_OBJCOPY}"
 			AND NOT str_target_type STREQUAL "TEST")

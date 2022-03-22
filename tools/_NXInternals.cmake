@@ -371,7 +371,6 @@ endfunction()
 function(nx_string_limit vOut sIn iMaxLen)
 	nx_function_begin()
 
-	message(STATUS "PRE vOut: ${vOut}, sIn: ${sIn}, iMaxLen: ${iMaxLen}")
 	string(MAKE_C_IDENTIFIER "${sIn}" sIn)
 	string(REGEX REPLACE "^_" "" sIn "${sIn}")
 	string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" sIn "${sIn}")
@@ -401,7 +400,6 @@ function(nx_string_limit vOut sIn iMaxLen)
 	set(${vOut}
 		"${sIn}"
 		PARENT_SCOPE)
-	message(WARNING "POST vOut: ${vOut}, sIn: ${sIn}, iMaxLen: ${iMaxLen}")
 
 	nx_function_end()
 endfunction()
