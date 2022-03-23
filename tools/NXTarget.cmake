@@ -45,7 +45,7 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
 	endif()
 endif()
 
-if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE AND NOT NX_TARGET_PLATFORM_MSDOS)
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
@@ -1261,6 +1261,20 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			STRIP ${arg_target_strip}
 			EXPORTABLE ${arg_target_exportable})
 
+		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED CMAKE_DXE3RES)
+			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.c")
+			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.o")
+			if(NOT EXISTS "${str_dxe_object}")
+				file(WRITE "${str_dxe_object}" "")
+			endif()
+			add_custom_command(
+				TARGET "${str_tname_shared}"
+				POST_BUILD
+				COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
+				COMMAND "${CMAKE_C_COMPILER}" -c -O2 -o "${str_dxe_object}" "${str_dxe_export}")
+			nx_target_sources("${str_tname_shared}" INTERFACE "${str_dxe_object}")
+		endif()
+
 		if(opt_soversion)
 			set_target_properties("${str_tname_shared}" PROPERTIES SOVERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
 																	VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION}")
@@ -1498,7 +1512,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	unset(lst_pbs_module)
 	unset(lst_pbs_shared)
 
-	if(NOT NX_TARGET_PLATFORM_ANDROID AND NOT NX_TARGET_PLATFORM_MSDOS AND NX_TARGET_BUILD_RELEASE)
+	if(NOT NX_TARGET_PLATFORM_ANDROID
+		AND NOT NX_TARGET_PLATFORM_MSDOS
+		AND NX_TARGET_BUILD_RELEASE)
 		if(DEFINED CMAKE_OBJCOPY
 			AND EXISTS "${CMAKE_OBJCOPY}"
 			AND NOT str_target_type STREQUAL "TEST")
