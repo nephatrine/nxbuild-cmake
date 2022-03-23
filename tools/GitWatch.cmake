@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Copyright © 2020 Andrew Hardin
-# Copyright © 2021 Daniel Wolf <<nephatrine@gmail.com>>
+# Copyright © 2022 Daniel Wolf <<nephatrine@gmail.com>>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the “Software”), to deal

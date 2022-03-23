@@ -1,7 +1,7 @@
 ISC License
 ===========
 
-_Copyright © 2021 Daniel Wolf <<nephatrine@gmail.com>>_
+_Copyright © 2022 Daniel Wolf <<nephatrine@gmail.com>>_
 
 Permission to use, copy, modify, and/or distribute this software for any purpose with or without
 fee is hereby granted, provided that the above copyright notice and this permission notice appear
