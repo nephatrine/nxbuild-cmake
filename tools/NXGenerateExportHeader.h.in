@@ -20,16 +20,16 @@
 #define @NX_GEH_INCLUDE_GUARD_NAME@
 
 #ifndef @NX_GEH_STATIC_DEFINE@
-#	ifndef @NX_GEH_EXPORT_MACRO_NAME@
+#	ifndef @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
 #		if defined( _WIN32 ) || defined(__CYGWIN__)
 #			ifdef @NX_GEH_DEFINE_SYMBOL@
-#				define @NX_GEH_EXPORT_MACRO_NAME@ __declspec( dllexport )
+#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __declspec( dllexport )
 #			else
-#				define @NX_GEH_EXPORT_MACRO_NAME@ __declspec( dllimport )
+#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __declspec( dllimport )
 #			endif
 #		elif defined( __GNUC__ ) || defined( __clang__ )
 #			ifdef @NX_GEH_DEFINE_SYMBOL@
-#				define @NX_GEH_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "default" ) ) )
+#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __attribute__( ( visibility( "default" ) ) )
 #			endif
 #		endif
 #	endif
@@ -42,8 +42,11 @@
 #	endif
 #endif
 
+#ifndef @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#	define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#endif
 #ifndef @NX_GEH_EXPORT_MACRO_NAME@
-#	define @NX_GEH_EXPORT_MACRO_NAME@
+#	define @NX_GEH_EXPORT_MACRO_NAME@ @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
 #endif
 #ifndef @NX_GEH_NO_EXPORT_MACRO_NAME@
 #	define @NX_GEH_NO_EXPORT_MACRO_NAME@
@@ -51,9 +54,9 @@
 
 #ifndef @NX_GEH_EXPORT_MACRO_CNAME@
 #	ifdef __cplusplus
-#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern "C" @NX_GEH_EXPORT_MACRO_NAME@
+#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern "C" @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
 #	else
-#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern @NX_GEH_EXPORT_MACRO_NAME@
+#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
 #	endif
 #endif
 
