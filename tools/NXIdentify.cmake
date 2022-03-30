@@ -20,86 +20,6 @@ include(_NXInternals)
 
 # ===================================================================
 
-function(nx_identify_build)
-	nx_function_begin()
-
-	# Get Current Information
-
-	get_property(NX_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
-		if(NOT DEFINED CMAKE_BUILD_TYPE OR NOT CMAKE_BUILD_TYPE)
-			list(APPEND _NX_VARLISTS_GLOBAL "CMAKE_BUILD_TYPE")
-			set(CMAKE_BUILD_TYPE "RelWithDebInfo")
-			set(CMAKE_BUILD_TYPE
-				"RelWithDebInfo"
-				CACHE STRING "" FORCE)
-		endif()
-	endif()
-
-	string(TOUPPER "${CMAKE_BUILD_TYPE}" NX_CMAKE_BUILD_TYPE)
-
-	# Determine Target Information
-
-	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
-		if(NX_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
-			nx_set(NX_TARGET_BUILD_STRING "Debug")
-			nx_set(NX_TARGET_BUILD_DEBUG ON)
-		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "MINSIZEREL")
-			nx_set(NX_TARGET_BUILD_STRING "MinSize")
-			nx_set(NX_TARGET_BUILD_MINSIZE ON)
-		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "RELWITHDEBINFO")
-			nx_set(NX_TARGET_BUILD_STRING "Release")
-			nx_set(NX_TARGET_BUILD_RELEASE ON)
-		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "RELEASE")
-			nx_set(NX_TARGET_BUILD_STRING "MaxSpeed")
-			nx_set(NX_TARGET_BUILD_MAXSPEED ON)
-		else()
-			message(FATAL_ERROR "Unsupported Build Type ('${NX_CMAKE_BUILD_TYPE}')")
-		endif()
-	else()
-		nx_set(NX_TARGET_BUILD_STRING "Unknown")
-		nx_set(NX_TARGET_BUILD_MULTI ON)
-	endif()
-
-	# Default Target Variables
-
-	foreach(sTargetBuild "DEBUG" "MINSIZE" "RELEASE" "MAXSPEED" "MULTI")
-		if(NOT DEFINED NX_TARGET_BUILD_${sTargetBuild})
-			nx_set(NX_TARGET_BUILD_${sTargetBuild} OFF)
-		endif()
-		nx_set(${NX_PROJECT_NAME}_BUILD_${sTargetBuild} ${NX_TARGET_BUILD_${sTargetBuild}})
-	endforeach()
-
-	# Set Identity Macros
-
-	string(TOUPPER "${NX_INTERNAL_PROJECT}" NX_PROJECT_MACRO)
-	string(MAKE_C_IDENTIFIER "${NX_PROJECT_MACRO}" NX_PROJECT_MACRO)
-
-	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
-		string(TOUPPER "${NX_TARGET_BUILD_STRING}" NX_TARGET_BUILD_UPPER)
-		nx_set(NX_TARGET_BUILD_DEFINES ${NX_PROJECT_MACRO}_BUILD_${NX_TARGET_BUILD_UPPER}
-				${NX_PROJECT_MACRO}_BUILD_STRING="${NX_TARGET_BUILD_STRING}")
-	else()
-		nx_set(
-			NX_TARGET_BUILD_DEFINES
-			$<$<CONFIG:Debug>:${NX_PROJECT_MACRO}_BUILD_DEBUG>
-			$<$<CONFIG:Debug>:${NX_PROJECT_MACRO}_BUILD_STRING="Debug">
-			$<$<CONFIG:MinSizeRel>:${NX_PROJECT_MACRO}_BUILD_MINSIZE>
-			$<$<CONFIG:MinSizeRel>:${NX_PROJECT_MACRO}_BUILD_STRING="MinSize">
-			$<$<CONFIG:RelWithDebInfo>:${NX_PROJECT_MACRO}_BUILD_RELEASE>
-			$<$<CONFIG:RelWithDebInfo>:${NX_PROJECT_MACRO}_BUILD_STRING="Release">
-			$<$<CONFIG:Release>:${NX_PROJECT_MACRO}_BUILD_MAXSPEED>
-			$<$<CONFIG:Release>:${NX_PROJECT_MACRO}_BUILD_STRING="MaxSpeed">)
-	endif()
-	nx_set(${NX_PROJECT_NAME}_BUILD_DEFINES ${NX_TARGET_BUILD_DEFINES})
-
-	nx_function_end()
-endfunction()
-
-nx_identify_build()
-
-# ===================================================================
-
 function(nx_identify_language)
 	nx_function_begin()
 
@@ -298,6 +218,95 @@ function(nx_identify_platform)
 endfunction()
 
 nx_identify_platform()
+
+# ===================================================================
+
+function(nx_identify_build)
+	nx_function_begin()
+
+	# Get Current Information
+
+	get_property(NX_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
+		if(NOT DEFINED CMAKE_BUILD_TYPE OR NOT CMAKE_BUILD_TYPE)
+			list(APPEND _NX_VARLISTS_GLOBAL "CMAKE_BUILD_TYPE")
+			if(NX_TARGET_PLATFORM_ANDROID OR NX_TARGET_PLATFORM_MSDOS)
+				message(NOTICE "Default Build: Release")
+				set(CMAKE_BUILD_TYPE "Release")
+				set(CMAKE_BUILD_TYPE
+					"Release"
+					CACHE STRING "" FORCE)
+			else()
+				message(NOTICE "Default Build: RelWithDebInfo")
+				set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+				set(CMAKE_BUILD_TYPE
+					"RelWithDebInfo"
+					CACHE STRING "" FORCE)
+			endif()
+		endif()
+	endif()
+
+	string(TOUPPER "${CMAKE_BUILD_TYPE}" NX_CMAKE_BUILD_TYPE)
+
+	# Determine Target Information
+
+	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
+		if(NX_CMAKE_BUILD_TYPE STREQUAL "DEBUG")
+			nx_set(NX_TARGET_BUILD_STRING "Debug")
+			nx_set(NX_TARGET_BUILD_DEBUG ON)
+		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "MINSIZEREL")
+			nx_set(NX_TARGET_BUILD_STRING "MinSize")
+			nx_set(NX_TARGET_BUILD_MINSIZE ON)
+		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "RELWITHDEBINFO")
+			nx_set(NX_TARGET_BUILD_STRING "Release")
+			nx_set(NX_TARGET_BUILD_RELEASE ON)
+		elseif(NX_CMAKE_BUILD_TYPE STREQUAL "RELEASE")
+			nx_set(NX_TARGET_BUILD_STRING "MaxSpeed")
+			nx_set(NX_TARGET_BUILD_MAXSPEED ON)
+		else()
+			message(FATAL_ERROR "Unsupported Build Type ('${NX_CMAKE_BUILD_TYPE}')")
+		endif()
+	else()
+		nx_set(NX_TARGET_BUILD_STRING "Unknown")
+		nx_set(NX_TARGET_BUILD_MULTI ON)
+	endif()
+
+	# Default Target Variables
+
+	foreach(sTargetBuild "DEBUG" "MINSIZE" "RELEASE" "MAXSPEED" "MULTI")
+		if(NOT DEFINED NX_TARGET_BUILD_${sTargetBuild})
+			nx_set(NX_TARGET_BUILD_${sTargetBuild} OFF)
+		endif()
+		nx_set(${NX_PROJECT_NAME}_BUILD_${sTargetBuild} ${NX_TARGET_BUILD_${sTargetBuild}})
+	endforeach()
+
+	# Set Identity Macros
+
+	string(TOUPPER "${NX_INTERNAL_PROJECT}" NX_PROJECT_MACRO)
+	string(MAKE_C_IDENTIFIER "${NX_PROJECT_MACRO}" NX_PROJECT_MACRO)
+
+	if(NOT NX_GENERATOR_IS_MULTI_CONFIG)
+		string(TOUPPER "${NX_TARGET_BUILD_STRING}" NX_TARGET_BUILD_UPPER)
+		nx_set(NX_TARGET_BUILD_DEFINES ${NX_PROJECT_MACRO}_BUILD_${NX_TARGET_BUILD_UPPER}
+				${NX_PROJECT_MACRO}_BUILD_STRING="${NX_TARGET_BUILD_STRING}")
+	else()
+		nx_set(
+			NX_TARGET_BUILD_DEFINES
+			$<$<CONFIG:Debug>:${NX_PROJECT_MACRO}_BUILD_DEBUG>
+			$<$<CONFIG:Debug>:${NX_PROJECT_MACRO}_BUILD_STRING="Debug">
+			$<$<CONFIG:MinSizeRel>:${NX_PROJECT_MACRO}_BUILD_MINSIZE>
+			$<$<CONFIG:MinSizeRel>:${NX_PROJECT_MACRO}_BUILD_STRING="MinSize">
+			$<$<CONFIG:RelWithDebInfo>:${NX_PROJECT_MACRO}_BUILD_RELEASE>
+			$<$<CONFIG:RelWithDebInfo>:${NX_PROJECT_MACRO}_BUILD_STRING="Release">
+			$<$<CONFIG:Release>:${NX_PROJECT_MACRO}_BUILD_MAXSPEED>
+			$<$<CONFIG:Release>:${NX_PROJECT_MACRO}_BUILD_STRING="MaxSpeed">)
+	endif()
+	nx_set(${NX_PROJECT_NAME}_BUILD_DEFINES ${NX_TARGET_BUILD_DEFINES})
+
+	nx_function_end()
+endfunction()
+
+nx_identify_build()
 
 # ===================================================================
 
@@ -511,17 +520,17 @@ function(nx_identify_compiler)
 			if("${NX_CMAKE_C_COMPILER_ID}" IN_LIST NX_COMPILERS_CLANG)
 				nx_set(NX_HOST_C_COMPILER_STRING "Clang")
 				nx_set(NX_HOST_C_COMPILER_CLANG ON)
-				nx_set(NX_HOST_C_VERSION_CLANG ${CMAKE_C_SIMULATE_VERSION})
+				nx_set(NX_HOST_C_VERSION_CLANG ${CMAKE_C_COMPILER_VERSION})
 				set(bFoundOne ON)
 			elseif("${NX_CMAKE_C_COMPILER_ID}" IN_LIST NX_COMPILERS_GNU)
 				nx_set(NX_HOST_C_COMPILER_STRING "GNU")
 				nx_set(NX_HOST_C_COMPILER_GNU ON)
-				nx_set(NX_HOST_C_VERSION_GNU ${CMAKE_C_SIMULATE_VERSION})
+				nx_set(NX_HOST_C_VERSION_GNU ${CMAKE_C_COMPILER_VERSION})
 				set(bFoundOne ON)
 			elseif("${NX_CMAKE_C_COMPILER_ID}" IN_LIST NX_COMPILERS_MSVC)
 				nx_set(NX_HOST_C_COMPILER_STRING "MSVC")
 				nx_set(NX_HOST_C_COMPILER_MSVC ON)
-				nx_set(NX_HOST_C_VERSION_MSVC ${CMAKE_C_SIMULATE_VERSION})
+				nx_set(NX_HOST_C_VERSION_MSVC ${CMAKE_C_COMPILER_VERSION})
 				set(bFoundOne ON)
 			endif()
 		endif()
@@ -560,17 +569,17 @@ function(nx_identify_compiler)
 			if("${NX_CMAKE_CXX_COMPILER_ID}" IN_LIST NX_COMPILERS_CLANG)
 				nx_set(NX_HOST_CXX_COMPILER_STRING "Clang")
 				nx_set(NX_HOST_CXX_COMPILER_CLANG ON)
-				nx_set(NX_HOST_CXX_VERSION_CLANG ${CMAKE_CXX_SIMULATE_VERSION})
+				nx_set(NX_HOST_CXX_VERSION_CLANG ${CMAKE_CXX_COMPILER_VERSION})
 				set(bFoundOne ON)
 			elseif("${NX_CMAKE_CXX_COMPILER_ID}" IN_LIST NX_COMPILERS_GNU)
 				nx_set(NX_HOST_CXX_COMPILER_STRING "GNU")
 				nx_set(NX_HOST_CXX_COMPILER_GNU ON)
-				nx_set(NX_HOST_CXX_VERSION_GNU ${CMAKE_CXX_SIMULATE_VERSION})
+				nx_set(NX_HOST_CXX_VERSION_GNU ${CMAKE_CXX_COMPILER_VERSION})
 				set(bFoundOne ON)
 			elseif("${NX_CMAKE_CXX_COMPILER_ID}" IN_LIST NX_COMPILERS_MSVC)
 				nx_set(NX_HOST_CXX_COMPILER_STRING "MSVC")
 				nx_set(NX_HOST_CXX_COMPILER_MSVC ON)
-				nx_set(NX_HOST_CXX_VERSION_MSVC ${CMAKE_CXX_SIMULATE_VERSION})
+				nx_set(NX_HOST_CXX_VERSION_MSVC ${CMAKE_CXX_COMPILER_VERSION})
 				set(bFoundOne ON)
 			endif()
 		endif()
