@@ -57,19 +57,14 @@ function(nx_test var_target_list str_target_name)
 
 	# === Do Not Test External Projects By Default ===
 
-	set(opt_default_test_build ON)
-	set(opt_default_test_enable ${BUILD_TESTING})
+	set(opt_default_test ON)
 	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(opt_default_test_build OFF)
-		set(opt_default_test_enable OFF)
+		set(opt_default_test OFF)
 	endif()
 
-	nx_option(BUILD_TESTS_ALL "Build Tests" ON)
-	nx_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test_build} "BUILD_TESTS_ALL" OFF)
-
-	nx_dependent_option(ENABLE_TESTS_ALL "Enable Tests" ${BUILD_TESTING} "BUILD_TESTS_ALL" OFF)
-	nx_dependent_option(ENABLE_TESTS${NX_PROJECT_NAME} "Enable Tests - ${PROJECT_NAME}" ${opt_default_test_enable}
-						"ENABLE_TESTS_ALL;BUILD_TESTS${NX_PROJECT_NAME}" OFF)
+	nx_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test})
+	nx_dependent_option(ENABLE_TESTS${NX_PROJECT_NAME} "Enable Tests - ${PROJECT_NAME}" ${BUILD_TESTING} "BUILD_TESTS${NX_PROJECT_NAME}"
+						OFF)
 
 	if(BUILD_TESTS${NX_PROJECT_NAME})
 
