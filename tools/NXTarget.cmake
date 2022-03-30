@@ -45,9 +45,153 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
 	endif()
 endif()
 
-if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE AND NOT NX_TARGET_PLATFORM_MSDOS)
-	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
+	if(NX_TARGET_PLATFORM_MSDOS)
+		set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+	else()
+		set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+	endif()
 endif()
+
+# ===================================================================
+
+include(CMakePushCheckState)
+
+if(NX_HOST_LANGUAGE_C)
+	include(CheckCSourceCompiles)
+
+	function(nx_check_c_compiles var_out lst_cflags lst_ldflags)
+		nx_function_begin()
+		cmake_push_check_state()
+
+		if(DEFINED ${lst_cflags})
+			list(APPEND CMAKE_REQUIRED_DEFINITIONS ${${lst_cflags}})
+		endif()
+		if(DEFINED ${lst_ldflags})
+			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
+		endif()
+		set(CMAKE_REQUIRED_QUIET OFF)
+
+		set(lst_fail_regex
+			FAIL_REGEX
+			"argument unused during compilation"
+			FAIL_REGEX
+			"unsupported .*option"
+			FAIL_REGEX
+			"unknown .*option"
+			FAIL_REGEX
+			"unrecognized .*option"
+			FAIL_REGEX
+			"ignoring unknown option"
+			FAIL_REGEX
+			"warning:.*ignored"
+			FAIL_REGEX
+			"warning:.*is valid for.*but not for"
+			FAIL_REGEX
+			"warning:.*redefined"
+			FAIL_REGEX
+			"[Ww]arning: [Oo]ption")
+
+		set(str_code
+			[[
+#include <stdio.h>
+
+int main(int argc, char *argv[])
+{
+	const char *hello = "Hello World";
+	printf("%s!", hello);
+	return 0;
+}
+	]])
+
+		check_c_source_compiles("${str_code}" ${var_out} ${lst_fail_regex})
+		if(${var_out})
+			nx_set(${var_out} ON)
+		else()
+			nx_set(${var_out} OFF)
+		endif()
+
+		cmake_pop_check_state()
+		nx_function_end()
+	endfunction()
+endif()
+
+if(NX_HOST_LANGUAGE_CXX)
+	include(CheckCXXSourceCompiles)
+
+	function(nx_check_cxx_compiles var_out lst_cflags lst_ldflags)
+		nx_function_begin()
+		cmake_push_check_state()
+
+		if(DEFINED ${lst_cflags})
+			list(APPEND CMAKE_REQUIRED_DEFINITIONS ${${lst_cflags}})
+		endif()
+		if(DEFINED ${lst_ldflags})
+			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
+		endif()
+		set(CMAKE_REQUIRED_QUIET OFF)
+
+		set(lst_fail_regex
+			FAIL_REGEX
+			"argument unused during compilation"
+			FAIL_REGEX
+			"unsupported .*option"
+			FAIL_REGEX
+			"unknown .*option"
+			FAIL_REGEX
+			"unrecognized .*option"
+			FAIL_REGEX
+			"ignoring unknown option"
+			FAIL_REGEX
+			"warning:.*ignored"
+			FAIL_REGEX
+			"warning:.*is valid for.*but not for"
+			FAIL_REGEX
+			"warning:.*redefined"
+			FAIL_REGEX
+			"[Ww]arning: [Oo]ption")
+
+		set(str_code
+			[[
+#include <iostream>
+#include <string>
+
+int main(int argc, char *argv[])
+{
+	const std::string hello = "Hello World";
+	std::cout << hello << "!" << std::endl;
+	return 0;
+}
+	]])
+
+		check_cxx_source_compiles("${str_code}" ${var_out} ${lst_fail_regex})
+		if(${var_out})
+			nx_set(${var_out} ON)
+		else()
+			nx_set(${var_out} OFF)
+		endif()
+
+		cmake_pop_check_state()
+		nx_function_end()
+	endfunction()
+endif()
+
+#
+# nx_check_compiles: Test CFLAG and LDFLAG combinations!
+#
+function(nx_check_compiles var_out lst_cflags lst_ldflags)
+	nx_function_begin()
+
+	if(NX_HOST_LANGUAGE_CXX)
+		nx_check_cxx_compiles(${var_out} ${lst_cflags} ${lst_ldflags})
+	elseif(NX_HOST_LANGUAGE_C)
+		nx_check_c_compiles(${var_out} ${lst_cflags} ${lst_ldflags})
+	else()
+		nx_set(${var_out} OFF)
+	endif()
+
+	nx_function_end()
+endfunction()
 
 # ===================================================================
 
@@ -979,9 +1123,18 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		set(str_oname_objects "${str_oname_objects}-${NX_TARGET_CXXABI_STRING}")
 	endif()
 
-	foreach(tmp_type "executable" "module" "shared" "static" "objects" "interface")
+	foreach(tmp_type "executable" "module" "shared")
 		if(NX_TARGET_PLATFORM_MSDOS)
-			nx_string_limit(str_oname_${tmp_type} "${str_oname_${tmp_type}}" 8)
+			if(NOT str_target_type STREQUAL "TEST")
+				nx_string_limit(str_oname_${tmp_type} "${str_oname_${tmp_type}}" 8)
+			endif()
+			string(TOUPPER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
+		elseif(NX_TARGET_PLATFORM_POSIX AND NOT NX_TARGET_PLATFORM_HAIKU)
+			string(TOLOWER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
+		endif()
+	endforeach()
+	foreach(tmp_type "static" "objects" "interface")
+		if(NX_TARGET_PLATFORM_MSDOS)
 			string(TOUPPER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
 		elseif(NX_TARGET_PLATFORM_POSIX AND NOT NX_TARGET_PLATFORM_HAIKU)
 			string(TOLOWER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
@@ -1031,6 +1184,125 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		set(str_fname_import "${CMAKE_IMPORT_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}")
 	endif()
 
+	# === LTO Settings ===
+
+	unset(lst_lto_fat_cflags)
+	unset(lst_lto_thin_cflags)
+	unset(lst_lto_fat_ldflags)
+	unset(lst_lto_thin_ldflags)
+
+	set(opt_try_lto ON)
+	if(NX_TARGET_BUILD_DEBUG)
+		set(opt_try_lto OFF)
+	endif()
+	if(NX_TARGET_PLATFORM_MSDOS)
+		if(NOT DEFINED str_tname_executable
+			AND NOT DEFINED str_tname_static
+			AND NOT DEFINED str_tname_objects)
+			set(opt_try_lto OFF)
+		endif()
+	else()
+		if(NOT DEFINED str_tname_executable
+			AND NOT DEFINED str_tname_module
+			AND NOT DEFINED str_tname_shared
+			AND NOT DEFINED str_tname_static
+			AND NOT DEFINED str_tname_objects)
+			set(opt_try_lto OFF)
+		endif()
+	endif()
+
+	set(opt_has_lto_fat OFF)
+	set(opt_has_lto_thin OFF)
+
+	if(opt_try_lto)
+		if(NX_HOST_COMPILER_MSVC)
+			set(opt_has_lto_link ON)
+			set(opt_has_lto_thin ON)
+			list(APPEND lst_lto_thin_cflags "$<$<NOT:$<CONFIG:DEBUG>>:-GL>")
+			list(APPEND lst_lto_thin_ldflags "$<$<NOT:$<CONFIG:DEBUG>>:-LTCG>" "$<$<CONFIG:RELWITHDEBUGINFO>:-INCREMENTAL:NO>")
+		elseif(NX_HOST_COMPILER_CLANG)
+			set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-fuse-linker-plugin")
+			nx_check_compiles(HAS_LDFLAG_FUSE_LINKER_PLUGIN lst_lto_thin_cflags lst_try_lto_ldflags)
+			if(HAS_LDFLAG_FUSE_LINKER_PLUGIN)
+				list(APPEND lst_lto_fat_ldflags "-fuse-linker-plugin")
+				list(APPEND lst_lto_thin_ldflags "-fuse-linker-plugin")
+			endif()
+
+			if(NOT NX_HOST_COMPILER_CLANG_VERSION VERSION_LESS 3.9)
+				set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-flto=thin")
+				set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-flto=thin")
+				nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO_THIN)
+					set(opt_has_lto_thin ON)
+					list(APPEND lst_lto_thin_cflags "-flto=thin")
+					list(APPEND lst_lto_thin_ldflags "-flto=thin")
+				endif()
+
+				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto=full")
+				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto=full")
+				nx_check_compiles(HAS_CFLAG_FLTO_FAT lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO_FAT)
+					set(opt_has_lto_fat ON)
+					list(APPEND lst_lto_fat_cflags "-flto=full")
+					list(APPEND lst_lto_fat_ldflags "-flto=full")
+				endif()
+			else()
+				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto")
+				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto")
+				nx_check_compiles(HAS_CFLAG_FLTO lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO)
+					set(opt_has_lto_fat ON)
+					list(APPEND lst_lto_fat_cflags "-flto")
+					list(APPEND lst_lto_fat_ldflags "-flto")
+				endif()
+			endif()
+		elseif(NX_HOST_COMPILER_GNU)
+			set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-fuse-linker-plugin")
+			set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-fuse-linker-plugin")
+			nx_check_compiles(HAS_CFLAG_FUSE_LINKER_PLUGIN lst_try_lto_cflags lst_try_lto_ldflags)
+			if(HAS_CFLAG_FUSE_LINKER_PLUGIN)
+				list(APPEND lst_lto_fat_cflags "-fuse-linker-plugin")
+				list(APPEND lst_lto_fat_ldflags "-fuse-linker-plugin")
+				list(APPEND lst_lto_thin_cflags "-fuse-linker-plugin")
+				list(APPEND lst_lto_thin_ldflags "-fuse-linker-plugin")
+			endif()
+
+			if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.7)
+				set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-flto" "-fno-fat-lto-objects")
+				set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-flto" "-fno-fat-lto-objects")
+				nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO_THIN)
+					set(opt_has_lto_thin ON)
+					list(APPEND lst_lto_thin_cflags "-flto" "-fno-fat-lto-objects")
+					list(APPEND lst_lto_thin_ldflags "-flto" "-fno-fat-lto-objects")
+				endif()
+
+				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto" "-ffat-lto-objects")
+				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto" "-ffat-lto-objects")
+				nx_check_compiles(HAS_CFLAG_FLTO_FAT lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO_FAT)
+					set(opt_has_lto_fat ON)
+					list(APPEND lst_lto_fat_cflags "-flto" "-ffat-lto-objects")
+					list(APPEND lst_lto_fat_ldflags "-flto" "-ffat-lto-objects")
+				endif()
+			elseif(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.5)
+				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto")
+				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto")
+				nx_check_compiles(HAS_CFLAG_FLTO lst_try_lto_cflags lst_try_lto_ldflags)
+				if(HAS_CFLAG_FLTO)
+					set(opt_has_lto_fat ON)
+					list(APPEND lst_lto_fat_cflags "-flto")
+					list(APPEND lst_lto_fat_ldflags "-flto")
+				endif()
+			endif()
+		endif()
+	endif()
+
+	if(opt_has_lto_fat AND NOT opt_has_lto_thin)
+		set(lst_lto_thin_cflags ${lst_lto_fat_cflags})
+		set(lst_lto_thin_ldflags ${lst_lto_fat_ldflags})
+	endif()
+
 	# === Build Executable ===
 
 	if(DEFINED str_tname_executable)
@@ -1064,7 +1336,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_executable}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1080,7 +1352,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_executable}"
-			PRIVATE ${arg_target_ldflags_private}
+			PRIVATE ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1131,6 +1403,24 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		endif()
 	endif()
 
+	# === Targetted LTO Handling ===
+
+	set(opt_try_lto_static OFF)
+	if(DEFINED str_tname_static OR DEFINED str_tname_objects)
+		set(opt_try_lto_static ON)
+	endif()
+
+	nx_dependent_option(USE_STATIC_THINLTO_${str_target_upper} "Use ThinLTO For ${str_target_name} Static Libraries" OFF
+						"opt_has_lto_thin;opt_try_lto_static" OFF)
+	if(USE_STATIC_THINLTO_${str_target_upper})
+		set(lst_lto_fat_cflags ${lst_lto_thin_cflags})
+		set(lst_lto_fat_ldflags ${lst_lto_thin_ldflags})
+	endif()
+	if(NX_TARGET_PLATFORM_MSDOS)
+		unset(lst_lto_thin_cflags)
+		unset(lst_lto_thin_ldflags)
+	endif()
+
 	# === Build Shared Module ===
 
 	if(DEFINED str_tname_module)
@@ -1156,7 +1446,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_module}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1172,7 +1462,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_module}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private}
+			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1234,7 +1524,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_shared}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1250,7 +1540,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_shared}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private}
+			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1360,7 +1650,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_static}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_fat_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1421,7 +1711,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_objects}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_fat_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
