@@ -57,15 +57,21 @@ function(nx_test var_target_list str_target_name)
 
 	# === Do Not Test External Projects By Default ===
 
-	set(opt_default_test ${BUILD_TESTING})
+	set(opt_default_test_build ON)
+	set(opt_default_test_enable ${BUILD_TESTING})
 	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(opt_default_test OFF)
+		set(opt_default_test_build OFF)
+		set(opt_default_test_enable OFF)
 	endif()
 
-	nx_option(ENABLE_TESTS_ALL "Enable Tests" ${BUILD_TESTING})
-	nx_dependent_option(ENABLE_TESTS${NX_PROJECT_NAME} "Enable Tests - ${PROJECT_NAME}" ${opt_default_test} "ENABLE_TESTS_ALL" OFF)
+	nx_option(BUILD_TESTS_ALL "Build Tests" ON)
+	nx_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test_build} "BUILD_TESTS_ALL" OFF)
 
-	if(ENABLE_TESTS${NX_PROJECT_NAME})
+	nx_dependent_option(ENABLE_TESTS_ALL "Enable Tests" ${BUILD_TESTING} "BUILD_TESTS_ALL" OFF)
+	nx_dependent_option(ENABLE_TESTS${NX_PROJECT_NAME} "Enable Tests - ${PROJECT_NAME}" ${opt_default_test_enable}
+						"ENABLE_TESTS_ALL;BUILD_TESTS${NX_PROJECT_NAME}" OFF)
+
+	if(BUILD_TESTS${NX_PROJECT_NAME})
 
 		# === Available Parsing Modes ===
 
@@ -110,29 +116,31 @@ function(nx_test var_target_list str_target_name)
 		nx_target(lst_targets_test "test-${str_target_name}" TEST ${arg_test_buildargs})
 		nx_append(${var_target_list} ${lst_targets_test})
 
-		foreach(tmp_target ${lst_targets_test})
-			foreach(tmp_cmdset ${arg_test_cmdset})
-				string(MAKE_C_IDENTIFIER "${tmp_cmdset}" tmp_suffix)
-				string(REPLACE " " ";" tmp_cmdset "${tmp_cmdset}")
-				add_test(
-					NAME "${tmp_target}_${tmp_suffix}"
-					WORKING_DIRECTORY "${arg_test_working_directory}"
-					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}> ${tmp_cmdset})
-				if(DEFINED arg_test_environment)
-					set_tests_properties("${tmp_target}_${tmp_suffix}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+		if(ENABLE_TESTS${NX_PROJECT_NAME})
+			foreach(tmp_target ${lst_targets_test})
+				foreach(tmp_cmdset ${arg_test_cmdset})
+					string(MAKE_C_IDENTIFIER "${tmp_cmdset}" tmp_suffix)
+					string(REPLACE " " ";" tmp_cmdset "${tmp_cmdset}")
+					add_test(
+						NAME "${tmp_target}_${tmp_suffix}"
+						WORKING_DIRECTORY "${arg_test_working_directory}"
+						COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}> ${tmp_cmdset})
+					if(DEFINED arg_test_environment)
+						set_tests_properties("${tmp_target}_${tmp_suffix}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+					endif()
+				endforeach()
+				if(NOT DEFINED arg_test_cmdset)
+					add_test(
+						NAME "${tmp_target}"
+						WORKING_DIRECTORY "${arg_test_working_directory}"
+						COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}>)
+					if(DEFINED arg_test_environment)
+						set_tests_properties("${tmp_target}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+					endif()
 				endif()
 			endforeach()
-			if(NOT DEFINED arg_test_cmdset)
-				add_test(
-					NAME "${tmp_target}"
-					WORKING_DIRECTORY "${arg_test_working_directory}"
-					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}>)
-				if(DEFINED arg_test_environment)
-					set_tests_properties("${tmp_target}" PROPERTIES ENVIRONMENT ${arg_test_environment})
-				endif()
-			endif()
-		endforeach()
-		unset(lst_targets_test)
+			unset(lst_targets_test)
+		endif()
 
 	endif()
 
