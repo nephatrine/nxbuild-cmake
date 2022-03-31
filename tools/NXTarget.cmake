@@ -45,12 +45,10 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
 	endif()
 endif()
 
-if(NOT DEFINED CMAKE_POSITION_INDEPENDENT_CODE)
-	if(NX_TARGET_PLATFORM_MSDOS)
-		set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
-	else()
-		set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-	endif()
+if(NX_TARGET_PLATFORM_MSDOS)
+	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
+else()
+	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
 # ===================================================================
@@ -70,6 +68,7 @@ if(NX_HOST_LANGUAGE_C)
 		if(DEFINED ${lst_ldflags})
 			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
 		endif()
+		list(APPEND CMAKE_REQUIRED_LIBRARIES ${ARGN})
 		set(CMAKE_REQUIRED_QUIET OFF)
 
 		set(lst_fail_regex
@@ -129,6 +128,7 @@ if(NX_HOST_LANGUAGE_CXX)
 		if(DEFINED ${lst_ldflags})
 			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
 		endif()
+		list(APPEND CMAKE_REQUIRED_LIBRARIES ${ARGN})
 		set(CMAKE_REQUIRED_QUIET OFF)
 
 		set(lst_fail_regex
@@ -183,9 +183,9 @@ function(nx_check_compiles var_out lst_cflags lst_ldflags)
 	nx_function_begin()
 
 	if(NX_HOST_LANGUAGE_CXX)
-		nx_check_cxx_compiles(${var_out} ${lst_cflags} ${lst_ldflags})
+		nx_check_cxx_compiles(${var_out} ${lst_cflags} ${lst_ldflags} ${ARGN})
 	elseif(NX_HOST_LANGUAGE_C)
-		nx_check_c_compiles(${var_out} ${lst_cflags} ${lst_ldflags})
+		nx_check_c_compiles(${var_out} ${lst_cflags} ${lst_ldflags} ${ARGN})
 	else()
 		nx_set(${var_out} OFF)
 	endif()
@@ -1184,123 +1184,443 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		set(str_fname_import "${CMAKE_IMPORT_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}")
 	endif()
 
-	# === LTO Settings ===
+	# === General Settings ===
 
-	unset(lst_lto_fat_cflags)
-	unset(lst_lto_thin_cflags)
-	unset(lst_lto_fat_ldflags)
-	unset(lst_lto_thin_ldflags)
+	unset(lst_general_defines)
+	unset(lst_general_cflags)
+	unset(lst_general_ldflags)
+	unset(lst_general_libs)
 
-	set(opt_try_lto ON)
+	set(opt_has_safe_flags OFF)
+	unset(lst_safe_cflags)
+	unset(lst_safe_ldflags)
+
+	set(opt_has_unsafe_flags OFF)
+	unset(lst_unsafe_cflags)
+	unset(lst_unsafe_ldflags)
+
+	set(opt_build_ndebug ON)
 	if(NX_TARGET_BUILD_DEBUG)
-		set(opt_try_lto OFF)
+		set(opt_build_ndebug OFF)
+	endif()
+
+	set(opt_try_cflags ON)
+	set(opt_try_ldflags ON)
+	if(NOT DEFINED str_tname_executable
+		AND NOT DEFINED str_tname_module
+		AND NOT DEFINED str_tname_shared
+		AND NOT DEFINED str_tname_static
+		AND NOT DEFINED str_tname_objects)
+		set(opt_try_cflags OFF)
 	endif()
 	if(NX_TARGET_PLATFORM_MSDOS)
-		if(NOT DEFINED str_tname_executable
-			AND NOT DEFINED str_tname_static
-			AND NOT DEFINED str_tname_objects)
-			set(opt_try_lto OFF)
+		if(NOT DEFINED str_tname_executable)
+			set(opt_try_ldflags OFF)
 		endif()
 	else()
 		if(NOT DEFINED str_tname_executable
 			AND NOT DEFINED str_tname_module
-			AND NOT DEFINED str_tname_shared
-			AND NOT DEFINED str_tname_static
-			AND NOT DEFINED str_tname_objects)
-			set(opt_try_lto OFF)
+			AND NOT DEFINED str_tname_shared)
+			set(opt_try_ldflags OFF)
 		endif()
 	endif()
 
-	set(opt_has_lto_fat OFF)
-	set(opt_has_lto_thin OFF)
+	set(opt_format_mach OFF)
+	set(opt_format_pe OFF)
+	set(opt_format_coff OFF)
+	set(opt_format_elf OFF)
 
-	if(opt_try_lto)
+	if(NX_TARGET_PLATFORM_DARWIN)
+		set(opt_format_mach ON)
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		set(opt_format_coff ON)
+	elseif(NX_TARGET_PLATFORM_WINDOWS OR NX_TARGET_PLATFORM_CYGWIN)
+		set(opt_format_pe ON)
+	else()
+		set(opt_format_elf ON)
+	endif()
+
+	if(NX_HOST_COMPILER_MSVC)
+		list(APPEND lst_general_defines "_CRT_SECURE_NO_WARNINGS")
+	endif()
+
+	set(opt_has_linker OFF)
+	if(opt_try_cflags)
+		if(DEFINED CMAKE_EXE_LINKER_FLAGS)
+			if(CMAKE_EXE_LINKER_FLAGS MATCHES "fuse-ld")
+				set(opt_has_linker ON)
+			endif()
+		endif()
+
 		if(NX_HOST_COMPILER_MSVC)
-			set(opt_has_lto_link ON)
-			set(opt_has_lto_thin ON)
-			list(APPEND lst_lto_thin_cflags "$<$<NOT:$<CONFIG:DEBUG>>:-GL>")
-			list(APPEND lst_lto_thin_ldflags "$<$<NOT:$<CONFIG:DEBUG>>:-LTCG>" "$<$<CONFIG:RELWITHDEBUGINFO>:-INCREMENTAL:NO>")
-		elseif(NX_HOST_COMPILER_CLANG)
-			set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-fuse-linker-plugin")
-			nx_check_compiles(HAS_LDFLAG_FUSE_LINKER_PLUGIN lst_lto_thin_cflags lst_try_lto_ldflags)
+			set(opt_has_linker ON)
+		endif()
+
+		if(NOT opt_has_linker)
+			if(opt_format_elf OR opt_format_pe)
+				if(NX_HOST_COMPILER_CLANG)
+					set(lst_try_cflags ${lst_general_cflags})
+					set(lst_try_ldflags ${lst_general_ldflags} "-fuse-ld=lld")
+					nx_check_compiles(HAS_LDFLAG_FUSE_LD_LLD lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_LDFLAG_FUSE_LD_LLD)
+						set(opt_has_linker ON)
+						list(APPEND lst_general_ldflags "-fuse-ld=lld")
+					endif()
+				endif()
+			endif()
+		endif()
+
+		if(NOT opt_has_linker)
+			if(opt_format_elf)
+				if(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
+					set(lst_try_cflags ${lst_general_cflags})
+					set(lst_try_ldflags ${lst_general_ldflags} "-fuse-ld=gold")
+					nx_check_compiles(HAS_LDFLAG_FUSE_LD_GOLD lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_LDFLAG_FUSE_LD_GOLD)
+						set(opt_has_linker ON)
+						list(APPEND lst_general_ldflags "-fuse-ld=gold")
+					endif()
+				endif()
+			endif()
+		endif()
+
+		if(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "-fuse-linker-plugin")
+			nx_check_compiles(HAS_LDFLAG_FUSE_LINKER_PLUGIN lst_try_cflags lst_try_ldflags ${lst_general_libs})
 			if(HAS_LDFLAG_FUSE_LINKER_PLUGIN)
-				list(APPEND lst_lto_fat_ldflags "-fuse-linker-plugin")
-				list(APPEND lst_lto_thin_ldflags "-fuse-linker-plugin")
+				set(opt_has_linker ON)
+				list(APPEND lst_general_ldflags "-fuse-linker-plugin")
+			endif()
+		endif()
+	endif()
+
+	nx_dependent_option(ENABLE_PEDANTIC_WARNINGS "Enable Various Extra Warnings" ON "opt_try_cflags" OFF)
+	nx_dependent_option(ENABLE_HARDENED_BUILD "Enable Security Hardening" ON "opt_build_ndebug;opt_try_cflags" OFF)
+	nx_dependent_option(ENABLE_LTO_OPTIONS "Enable Link-Time Opimization" ON "opt_build_ndebug;opt_has_linker" OFF)
+
+	if(ENABLE_PEDANTIC_WARNINGS)
+		if(NX_HOST_COMPILER_MSVC)
+			list(APPEND lst_general_cflags "-W4")
+		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
+			list(APPEND lst_general_cflags "-Wall" "-Wextra" "-pedantic")
+		endif()
+	endif()
+
+	if(ENABLE_HARDENED_BUILD)
+		if(NX_HOST_COMPILER_MSVC)
+			set(lst_try_cflags ${lst_general_cflags} "-GS" "-sdl")
+			set(lst_try_ldflags ${lst_general_ldflags})
+			nx_check_compiles(HAS_CFLAG_SDL lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_SDL)
+				list(APPEND lst_general_cflags "-GS" "-sdl")
 			endif()
 
-			if(NOT NX_HOST_COMPILER_CLANG_VERSION VERSION_LESS 3.9)
-				set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-flto=thin")
-				set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-flto=thin")
-				nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO_THIN)
-					set(opt_has_lto_thin ON)
-					list(APPEND lst_lto_thin_cflags "-flto=thin")
-					list(APPEND lst_lto_thin_ldflags "-flto=thin")
-				endif()
+			set(lst_try_cflags ${lst_general_cflags} "-guard:cf")
+			set(lst_try_ldflags ${lst_general_ldflags} "-GUARD:CF")
+			nx_check_compiles(HAS_CFLAG_GUARD_CF lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_GUARD_CF)
+				list(APPEND lst_general_cflags "-guard:cf")
+				list(APPEND lst_general_ldflags "-GUARD:CF")
+			endif()
 
-				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto=full")
-				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto=full")
-				nx_check_compiles(HAS_CFLAG_FLTO_FAT lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO_FAT)
-					set(opt_has_lto_fat ON)
-					list(APPEND lst_lto_fat_cflags "-flto=full")
-					list(APPEND lst_lto_fat_ldflags "-flto=full")
+			set(lst_try_cflags ${lst_general_cflags} "-guard:ehcont")
+			set(lst_try_ldflags ${lst_general_ldflags} "-GUARD:EHCONT")
+			nx_check_compiles(HAS_CFLAG_GUARD_EHCONT lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_GUARD_EHCONT)
+				list(APPEND lst_general_cflags "-guard:ehcont")
+				list(APPEND lst_general_ldflags "-GUARD:EHCONT")
+			endif()
+		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
+			set(lst_try_cflags ${lst_general_cflags} "-Warray-bounds" "-Werror=array-bounds")
+			set(lst_try_ldflags ${lst_general_ldflags})
+			nx_check_compiles(HAS_CFLAG_WARRAY_BOUNDS lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_WARRAY_BOUNDS)
+				list(APPEND lst_general_cflags "-Warray-bounds" "-Werror=array-bounds")
+			endif()
+
+			set(lst_try_cflags ${lst_general_cflags} "-Wformat=2" "-Wformat-security" "-Werror=format-security")
+			set(lst_try_ldflags ${lst_general_ldflags})
+			nx_check_compiles(HAS_CFLAG_WFORMAT_SECURITY lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_WFORMAT_SECURITY)
+				list(APPEND lst_general_cflags "-Wformat=2" "-Wformat-security" "-Werror=format-security")
+			endif()
+
+			if(NOT NX_TARGET_PLATFORM_MSDOS)
+				set(lst_try_cflags ${lst_general_cflags} "-fcf-protection")
+				set(lst_try_ldflags ${lst_general_ldflags} "-fcf-protection")
+				nx_check_compiles(HAS_CFLAG_FCF_PROTECTION lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_CFLAG_FCF_PROTECTION)
+					list(APPEND lst_general_cflags "-fcf-protection")
+					list(APPEND lst_general_ldflags "-fcf-protection")
+				endif()
+			endif()
+
+			set(lst_try_cflags ${lst_general_cflags} "-fstack-clash-protection")
+			set(lst_try_ldflags ${lst_general_ldflags} "-fstack-clash-protection")
+			nx_check_compiles(HAS_CFLAG_FSTACK_CLASH_PROTECTION lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_CFLAG_FSTACK_CLASH_PROTECTION)
+				list(APPEND lst_general_cflags "-fstack-clash-protection")
+				list(APPEND lst_general_ldflags "-fstack-clash-protection")
+			endif()
+
+			# TODO: msys2/clang64 << undefined symbol: __stack_chk_guard >>
+			if(NOT NX_TARGET_PLATFORM_WINDOWS
+				OR NOT NX_HOST_COMPILER_CLANG
+				OR NOT NX_HOST_PLATFORM_WINDOWS
+				OR NOT ENABLE_LTO_OPTIONS)
+				set(lst_try_cflags ${lst_general_cflags} "-fstack-protector-strong")
+				set(lst_try_ldflags ${lst_general_ldflags} "-fstack-protector-strong")
+				nx_check_compiles(HAS_CFLAG_FSTACK_PROTECTOR_STRONG lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
+					list(APPEND lst_general_cflags "-fstack-protector-strong")
+					list(APPEND lst_general_ldflags "-fstack-protector-strong")
 				endif()
 			else()
-				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto")
-				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto")
-				nx_check_compiles(HAS_CFLAG_FLTO lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO)
-					set(opt_has_lto_fat ON)
-					list(APPEND lst_lto_fat_cflags "-flto")
-					list(APPEND lst_lto_fat_ldflags "-flto")
-				endif()
-			endif()
-		elseif(NX_HOST_COMPILER_GNU)
-			set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-fuse-linker-plugin")
-			set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-fuse-linker-plugin")
-			nx_check_compiles(HAS_CFLAG_FUSE_LINKER_PLUGIN lst_try_lto_cflags lst_try_lto_ldflags)
-			if(HAS_CFLAG_FUSE_LINKER_PLUGIN)
-				list(APPEND lst_lto_fat_cflags "-fuse-linker-plugin")
-				list(APPEND lst_lto_fat_ldflags "-fuse-linker-plugin")
-				list(APPEND lst_lto_thin_cflags "-fuse-linker-plugin")
-				list(APPEND lst_lto_thin_ldflags "-fuse-linker-plugin")
+				set(HAS_CFLAG_FSTACK_PROTECTOR_STRONG OFF)
 			endif()
 
-			if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.7)
-				set(lst_try_lto_cflags ${lst_lto_thin_cflags} "-flto" "-fno-fat-lto-objects")
-				set(lst_try_lto_ldflags ${lst_lto_thin_ldflags} "-flto" "-fno-fat-lto-objects")
-				nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO_THIN)
-					set(opt_has_lto_thin ON)
-					list(APPEND lst_lto_thin_cflags "-flto" "-fno-fat-lto-objects")
-					list(APPEND lst_lto_thin_ldflags "-flto" "-fno-fat-lto-objects")
+			# TODO: msys2/mingw64 << internal compiler error: in seh_emit_stackalloc >>
+			if(NX_TARGET_PLATFORM_WINDOWS
+				AND NX_HOST_COMPILER_GNU
+				AND NX_HOST_PLATFORM_WINDOWS
+				AND HAS_CFLAG_FSTACK_CLASH_PROTECTION)
+				list(APPEND lst_general_defines "_FORTIFY_SOURCE=0")
+			else()
+				list(APPEND lst_general_defines "_FORTIFY_SOURCE=2" "_GLIBCXX_ASSERTIONS")
+				if(NOT HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
+					list(APPEND lst_general_libs "ssp")
 				endif()
+			endif()
 
-				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto" "-ffat-lto-objects")
-				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto" "-ffat-lto-objects")
-				nx_check_compiles(HAS_CFLAG_FLTO_FAT lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO_FAT)
-					set(opt_has_lto_fat ON)
-					list(APPEND lst_lto_fat_cflags "-flto" "-ffat-lto-objects")
-					list(APPEND lst_lto_fat_ldflags "-flto" "-ffat-lto-objects")
+			if(NX_HOST_COMPILER_CLANG)
+				set(lst_try_cflags ${lst_general_cflags} "-fsanitize=safe-stack")
+				set(lst_try_ldflags ${lst_general_ldflags} "-fsanitize=safe-stack")
+				nx_check_compiles(HAS_CFLAG_FSANITIZE_SAFE_STACK lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_CFLAG_FSANITIZE_SAFE_STACK)
+					list(APPEND lst_general_cflags "-fsanitize=safe-stack")
+					list(APPEND lst_general_ldflags "-fsanitize=safe-stack")
 				endif()
-			elseif(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.5)
-				set(lst_try_lto_cflags ${lst_lto_fat_cflags} "-flto")
-				set(lst_try_lto_ldflags ${lst_lto_fat_ldflags} "-flto")
-				nx_check_compiles(HAS_CFLAG_FLTO lst_try_lto_cflags lst_try_lto_ldflags)
-				if(HAS_CFLAG_FLTO)
-					set(opt_has_lto_fat ON)
-					list(APPEND lst_lto_fat_cflags "-flto")
-					list(APPEND lst_lto_fat_ldflags "-flto")
+			endif()
+		endif()
+
+		if(ENABLE_LTO_OPTIONS)
+			if(NX_HOST_COMPILER_MSVC)
+				set(opt_has_unsafe_flags ON)
+				list(APPEND lst_unsafe_cflags "$<$<NOT:$<CONFIG:Debug>>:-GL>")
+				list(APPEND lst_unsafe_ldflags "$<$<NOT:$<CONFIG:Debug>>:-LTCG>" "$<$<CONFIG:RelWithDebInfo>:-INCREMENTAL:NO>")
+			elseif(NX_HOST_COMPILER_CLANG)
+				if(NOT NX_HOST_COMPILER_CLANG_VERSION VERSION_LESS 3.9)
+					set(lst_try_cflags ${lst_general_cflags} ${lst_unsafe_cflags} "-flto=thin")
+					set(lst_try_ldflags ${lst_general_ldflags} ${lst_unsafe_ldflags} "-flto=thin")
+					nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FLTO_THIN)
+						set(opt_has_unsafe_flags ON)
+						list(APPEND lst_unsafe_cflags "-flto=thin")
+						list(APPEND lst_unsafe_ldflags "-flto=thin")
+					endif()
+
+					set(lst_try_cflags ${lst_general_cflags} ${lst_safe_cflags} "-flto=full")
+					set(lst_try_ldflags ${lst_general_ldflags} ${lst_safe_ldflags} "-flto=full")
+					nx_check_compiles(HAS_CFLAG_FLTO_FULL lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FLTO_FULL)
+						set(opt_has_safe_flags ON)
+						list(APPEND lst_safe_cflags "-flto=full")
+						list(APPEND lst_safe_ldflags "-flto=full")
+					endif()
+				else()
+					set(lst_try_cflags ${lst_general_cflags} "-flto")
+					set(lst_try_ldflags ${lst_general_cflags} "-flto")
+					nx_check_compiles(HAS_CFLAG_FLTO lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FLTO)
+						list(APPEND lst_general_cflags "-flto")
+						list(APPEND lst_general_cflags "-flto")
+					endif()
+				endif()
+			elseif(NX_HOST_COMPILER_GNU)
+				if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.7)
+					set(lst_try_cflags ${lst_general_cflags} ${lst_unsafe_cflags} "-flto" "-fno-fat-lto-objects")
+					set(lst_try_ldflags ${lst_general_ldflags} ${lst_unsafe_ldflags} "-flto" "-fno-fat-lto-objects")
+					nx_check_compiles(HAS_CFLAG_FNO_FAT_LTO_OBJECTS lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FNO_FAT_LTO_OBJECTS)
+						set(opt_has_unsafe_flags ON)
+						list(APPEND lst_unsafe_cflags "-flto" "-fno-fat-lto-objects")
+						list(APPEND lst_unsafe_ldflags "-flto" "-fno-fat-lto-objects")
+					endif()
+
+					set(lst_try_cflags ${lst_general_cflags} ${lst_safe_cflags} "-flto" "-ffat-lto-objects")
+					set(lst_try_ldflags ${lst_general_ldflags} ${lst_safe_ldflags} "-flto" "-ffat-lto-objects")
+					nx_check_compiles(HAS_CFLAG_FFAT_LTO_OBJECTS lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FFAT_LTO_OBJECTS)
+						set(opt_has_safe_flags ON)
+						list(APPEND lst_safe_cflags "-flto" "-ffat-lto-objects")
+						list(APPEND lst_safe_ldflags "-flto" "-ffat-lto-objects")
+					endif()
+				else()
+					set(lst_try_cflags ${lst_general_cflags} "-flto")
+					set(lst_try_ldflags ${lst_general_cflags} "-flto")
+					nx_check_compiles(HAS_CFLAG_FLTO lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_CFLAG_FLTO)
+						list(APPEND lst_general_cflags "-flto")
+						list(APPEND lst_general_cflags "-flto")
+					endif()
 				endif()
 			endif()
 		endif()
 	endif()
 
-	if(opt_has_lto_fat AND NOT opt_has_lto_thin)
-		set(lst_lto_thin_cflags ${lst_lto_fat_cflags})
-		set(lst_lto_thin_ldflags ${lst_lto_fat_ldflags})
+	if(opt_try_ldflags)
+		if(NX_HOST_COMPILER_MSVC)
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "-CETCOMPAT")
+			nx_check_compiles(HAS_LDFLAG_CETCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_LDFLAG_CETCOMPAT)
+				list(APPEND lst_general_ldflags "-CETCOMPAT")
+			endif()
+
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "-DYNAMICBASE")
+			nx_check_compiles(HAS_LDFLAG_DYNAMICBASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_LDFLAG_DYNAMICBASE)
+				list(APPEND lst_general_ldflags "-DYNAMICBASE")
+			endif()
+
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "-NXCOMPAT")
+			nx_check_compiles(HAS_LDFLAG_CETCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_LDFLAG_CETCOMPAT)
+				list(APPEND lst_general_ldflags "-NXCOMPAT")
+			endif()
+
+			if(NX_TARGET_ARCHITECTURE_AMD64)
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "-HIGHENTROPYVA")
+				nx_check_compiles(HAS_LDFLAG_HIGHENTROPYVA lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_HIGHENTROPYVA)
+					list(APPEND lst_general_ldflags "-HIGHENTROPYVA")
+				endif()
+			elseif(NX_TARGET_ARCHITECTURE_IA32)
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "-SAFESEH")
+				nx_check_compiles(HAS_LDFLAG_SAFESEH lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_SAFESEH)
+					list(APPEND lst_general_ldflags "-SAFESEH")
+				endif()
+			endif()
+		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--as-needed")
+			nx_check_compiles(HAS_LDFLAG_AS_NEEDED lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_LDFLAG_AS_NEEDED)
+				list(APPEND lst_general_ldflags "LINKER:--as-needed")
+			endif()
+
+			set(lst_try_cflags ${lst_general_cflags})
+			set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--no-undefined")
+			nx_check_compiles(HAS_LDFLAG_NO_UNDEFINED lst_try_cflags lst_try_ldflags ${lst_general_libs})
+			if(HAS_LDFLAG_NO_UNDEFINED)
+				list(APPEND lst_general_ldflags "LINKER:--no-undefined")
+			endif()
+
+			if(opt_format_elf)
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,defs")
+				nx_check_compiles(HAS_LDFLAG_Z_DEFS lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_DEFS)
+					list(APPEND lst_general_ldflags "LINKER:-z,defs")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,noexecstack")
+				nx_check_compiles(HAS_LDFLAG_Z_NOEXECSTACK lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_NOEXECSTACK)
+					list(APPEND lst_general_ldflags "LINKER:-z,noexecstack")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,now")
+				nx_check_compiles(HAS_LDFLAG_Z_NOW lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_NOW)
+					list(APPEND lst_general_ldflags "LINKER:-z,now")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,relro")
+				nx_check_compiles(HAS_LDFLAG_Z_RELRO lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_RELRO)
+					list(APPEND lst_general_ldflags "LINKER:-z,relro")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,separate-code")
+				nx_check_compiles(HAS_LDFLAG_Z_SEPARATE_CODE lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_SEPARATE_CODE)
+					list(APPEND lst_general_ldflags "LINKER:-z,separate-code")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,text")
+				nx_check_compiles(HAS_LDFLAG_Z_TEXT lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_Z_TEXT)
+					list(APPEND lst_general_ldflags "LINKER:-z,text")
+				endif()
+			elseif(opt_format_pe)
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--dynamicbase")
+				nx_check_compiles(HAS_LDFLAG_DYNAMICBASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_DYNAMICBASE)
+					list(APPEND lst_general_ldflags "LINKER:--dynamicbase")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--nxcompat")
+				nx_check_compiles(HAS_LDFLAG_NXCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_NXCOMPAT)
+					list(APPEND lst_general_ldflags "LINKER:--nxcompat")
+				endif()
+
+				set(lst_try_cflags ${lst_general_cflags})
+				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--disable-auto-image-base")
+				nx_check_compiles(HAS_LDFLAG_DISABLE_AUTO_IMAGE_BASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
+				if(HAS_LDFLAG_DISABLE_AUTO_IMAGE_BASE)
+					list(APPEND lst_general_ldflags "LINKER:--disable-auto-image-base")
+				endif()
+
+				if(NX_TARGET_ARCHITECTURE_AMD64)
+					set(lst_try_cflags ${lst_general_cflags})
+					set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--high-entropy-va")
+					nx_check_compiles(HAS_LDFLAG_HIGH_ENTROPY_VA lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_LDFLAG_HIGH_ENTROPY_VA)
+						list(APPEND lst_general_ldflags "LINKER:--high-entropy-va")
+					endif()
+				elseif(NX_TARGET_ARCHITECTURE_IA32)
+					set(lst_try_cflags ${lst_general_cflags})
+					set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--no-seh")
+					nx_check_compiles(HAS_LDFLAG_NO_SEH lst_try_cflags lst_try_ldflags ${lst_general_libs})
+					if(HAS_LDFLAG_NO_SEH)
+						list(APPEND lst_general_ldflags "LINKER:--no-seh")
+					endif()
+				endif()
+			endif()
+		endif()
+	endif()
+
+	if(opt_has_safe_flags AND NOT opt_has_unsafe_flags)
+		set(lst_unsafe_cflags ${lst_safe_cflags})
+		set(lst_unsafe_ldflags ${lst_safe_ldflags})
+	endif()
+
+	if(CMAKE_AR MATCHES "gcc-ar|llvm-ar")
+		nx_set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+		nx_set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+
+		nx_set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
+		nx_set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
+	endif()
+
+	if(CMAKE_RANLIB MATCHES "gcc-ranlib|llvm-ranlib")
+		nx_set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+		nx_set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
 	endif()
 
 	# === Build Executable ===
@@ -1326,7 +1646,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		nx_target_compile_definitions(
 			"${str_tname_executable}"
 			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES}
+					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
 			PUBLIC ${arg_target_defines_public}
 			INTERFACE ${arg_target_defines_interface})
 		nx_target_compile_features(
@@ -1336,7 +1656,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_executable}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1347,12 +1667,12 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_executable}"
-			PRIVATE ${arg_target_depends_private}
+			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
 			PUBLIC ${arg_target_depends_public}
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_executable}"
-			PRIVATE ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
+			PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1405,20 +1725,28 @@ function(nx_target var_target_list str_target_name str_type_optional)
 
 	# === Targetted LTO Handling ===
 
-	set(opt_try_lto_static OFF)
+	set(opt_has_static_libs OFF)
 	if(DEFINED str_tname_static OR DEFINED str_tname_objects)
-		set(opt_try_lto_static ON)
+		set(opt_has_static_libs ON)
 	endif()
 
-	nx_dependent_option(USE_STATIC_THINLTO_${str_target_upper} "Use ThinLTO For ${str_target_name} Static Libraries" OFF
-						"opt_has_lto_thin;opt_try_lto_static" OFF)
-	if(USE_STATIC_THINLTO_${str_target_upper})
-		set(lst_lto_fat_cflags ${lst_lto_thin_cflags})
-		set(lst_lto_fat_ldflags ${lst_lto_thin_ldflags})
+	set(opt_nodist_default ON)
+	if(DEFINED NX_INSTALL_SYSTEM AND NX_INSTALL_SYSTEM)
+		set(opt_nodist_default OFF)
 	endif()
+
+	nx_dependent_option(BUILD_NODIST_STATIC_LIBS "Build Tightly-Coupled ${str_target_name} Static Libs" ${opt_nodist_default}
+						"opt_has_unsafe_flags;opt_has_static_libs" OFF)
+	if(BUILD_NODIST_STATIC_LIBS)
+		set(lst_safe_cflags ${lst_unsafe_cflags})
+		set(lst_safe_ldflags ${lst_unsafe_ldflags})
+	endif()
+
+	# NOTE: DXEs are not like other shared libraries
 	if(NX_TARGET_PLATFORM_MSDOS)
-		unset(lst_lto_thin_cflags)
-		unset(lst_lto_thin_ldflags)
+		unset(lst_general_ldflags)
+		unset(lst_unsafe_cflags)
+		unset(lst_unsafe_ldflags)
 	endif()
 
 	# === Build Shared Module ===
@@ -1435,7 +1763,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		nx_target_compile_definitions(
 			"${str_tname_module}"
 			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES}
+					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
 			PUBLIC ${arg_target_defines_public}
 			INTERFACE ${arg_target_defines_interface}
 			DEFINE_SYMBOL ${arg_target_define_symbol})
@@ -1446,7 +1774,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_module}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1457,12 +1785,12 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_module}"
-			PRIVATE ${arg_target_depends_private}
+			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
 			PUBLIC ${arg_target_depends_public}
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_module}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
+			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1513,7 +1841,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		nx_target_compile_definitions(
 			"${str_tname_shared}"
 			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES}
+					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
 			PUBLIC ${arg_target_defines_public}
 			INTERFACE ${arg_target_defines_interface}
 			DEFINE_SYMBOL ${arg_target_define_symbol})
@@ -1524,7 +1852,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_shared}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_thin_cflags}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1535,12 +1863,12 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_shared}"
-			PRIVATE ${arg_target_depends_private}
+			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
 			PUBLIC ${arg_target_depends_public}
 			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options(
 			"${str_tname_shared}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_lto_thin_ldflags}
+			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
 			PUBLIC ${arg_target_ldflags_public}
 			INTERFACE ${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -1551,6 +1879,11 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			STRIP ${arg_target_strip}
 			EXPORTABLE ${arg_target_exportable})
 
+		if(NX_TARGET_PLATFORM_MSDOS)
+			if(NX_HOST_LANGUAGE_CXX AND arg_target_sources_private MATCHES ".cc|.cpp|.cxx")
+				nx_target_link_libraries("${str_tname_shared}" INTERFACE "stdc++")
+			endif()
+		endif()
 		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED CMAKE_DXE3RES)
 			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.c")
 			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.o")
@@ -1561,7 +1894,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 				TARGET "${str_tname_shared}"
 				POST_BUILD
 				COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
-				COMMAND "${CMAKE_C_COMPILER}" -c -O2 -o "${str_dxe_object}" "${str_dxe_export}")
+				COMMAND "${CMAKE_C_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
 			nx_target_sources("${str_tname_shared}" INTERFACE "${str_dxe_object}")
 		endif()
 
@@ -1638,7 +1971,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		nx_target_compile_definitions(
 			"${str_tname_static}"
 			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES}
+					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
 			PUBLIC ${arg_target_defines_public}
 			INTERFACE ${arg_target_defines_interface}
 			DEFINE_SYMBOL ${arg_target_define_symbol}
@@ -1650,7 +1983,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_static}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_fat_cflags}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_safe_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
@@ -1699,7 +2032,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		nx_target_compile_definitions(
 			"${str_tname_objects}"
 			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES}
+					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
 			PUBLIC ${arg_target_defines_public}
 			INTERFACE ${arg_target_defines_interface}
 			DEFINE_SYMBOL ${arg_target_define_symbol}
@@ -1711,7 +2044,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			INTERFACE ${arg_target_features_interface})
 		nx_target_compile_options(
 			"${str_tname_objects}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_lto_fat_cflags}
+			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_safe_cflags}
 			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
 			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
 		nx_target_include_directories(
