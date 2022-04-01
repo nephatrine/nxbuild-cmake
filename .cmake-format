@@ -148,15 +148,18 @@ with section("parse"):
         'CXXFLAGS': '*',
         'DEFINES': '*',
         'DEPENDS': '*',
+        'LIBDEPS': '*',
         'FEATURES': '*',
         'INCLUDES': '*',
         'LDFLAGS': '*',
+        'DXEFLAGS': '*',
         'SOURCES': '*',
         'GENERATE_EXPORT': '*',
         'GENERATE_VERSION': '*',
         'DEFINE_SYMBOL': '*',
         'STATIC_DEFINE': '*',
         'OUTPUT_NAME': '*',
+        'OUTPUT_SHORT': '*',
         'STRIP': '*'
       }
     },

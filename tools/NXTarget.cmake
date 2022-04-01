@@ -883,19 +883,21 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	# === Available Parsing Modes ===
 
 	set(lst_pmode_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-	set(lst_pmode_single "DEFINE_SYMBOL" "STATIC_DEFINE" "OUTPUT_NAME" "STRIP" "EXPORTABLE")
+	set(lst_pmode_single "DEFINE_SYMBOL" "STATIC_DEFINE" "OUTPUT_NAME" "OUTPUT_SHORT" "STRIP" "EXPORTABLE")
 	set(lst_pmode_single_v "GENERATE_EXPORT" "GENERATE_VERSION")
 	set(lst_pmode_multi
 		"CFLAGS"
 		"CXXFLAGS"
 		"DEFINES"
 		"DEPENDS"
+		"LIBDEPS"
 		"FEATURES"
 		"INCLUDES"
 		"LDFLAGS"
 		"SOURCES")
+	set(lst_pmode_multi_s "DXEFLAGS")
 
-	foreach(tmp_pmode ${lst_pmode_single})
+	foreach(tmp_pmode ${lst_pmode_single} ${lst_pmode_multi_s})
 		string(TOLOWER "${tmp_pmode}" tmp_pmode)
 		unset(arg_target_${tmp_pmode})
 	endforeach()
@@ -916,7 +918,8 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	foreach(tmp_argv ${str_type_optional} ${ARGN})
 		if("${tmp_argv}" IN_LIST lst_pmode_single
 			OR "${tmp_argv}" IN_LIST lst_pmode_single_v
-			OR "${tmp_argv}" IN_LIST lst_pmode_multi)
+			OR "${tmp_argv}" IN_LIST lst_pmode_multi
+			OR "${tmp_argv}" IN_LIST lst_pmode_multi_s)
 			set(str_pmode_cur "${tmp_argv}")
 		elseif("${tmp_argv}" IN_LIST lst_pmode_visibility)
 			set(str_vmode_cur "${tmp_argv}")
@@ -932,7 +935,14 @@ function(nx_target var_target_list str_target_name str_type_optional)
 				set(opt_exportable ON)
 			endif()
 			string(TOLOWER "${str_pmode_cur}_${str_vmode_cur}" tmp_pmode)
-			set(arg_target_${tmp_pmode} "${tmp_argv}")
+			if(DEFINED arg_target_${tmp_pmode})
+				message(AUTHOR_WARNING "nx_target: Option ${str_pmode_cur} Already Set")
+			else()
+				set(arg_target_${tmp_pmode} "${tmp_argv}")
+			endif()
+		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi_s)
+			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
+			list(APPEND arg_target_${tmp_pmode} "${tmp_argv}")
 		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi AND "${str_vmode_cur}" IN_LIST lst_pmode_visibility)
 			if(NOT "${str_vmode_cur}" STREQUAL "PRIVATE")
 				set(opt_exportable ON)
@@ -1014,7 +1024,11 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	endif()
 
 	if(NOT DEFINED arg_target_output_name)
-		set(arg_target_output_name "${str_target_name}")
+		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED arg_target_output_short)
+			set(arg_target_output_name "${arg_target_output_short}")
+		else()
+			set(arg_target_output_name "${str_target_name}")
+		endif()
 	endif()
 
 	# === Determine Targets To Build ===
@@ -1638,6 +1652,42 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		endif()
 	endif()
 
+	# === Parse LIBDEPS ===
+
+	foreach(tmp_visibility "private" "public" "interface")
+		unset(arg_target_libdeps_${tmp_visibility}_shared)
+		unset(arg_target_libdeps_${tmp_visibility}_static)
+		unset(arg_target_libdeps_${tmp_visibility}_object)
+		unset(arg_target_libdeps_${tmp_visibility}_source)
+
+		foreach(tmp_libdep ${arg_target_libdeps_${tmp_visibility}})
+			if(TARGET ${tmp_libdep})
+				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+					list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${tmp_libdep})
+				endif()
+				if(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					list(APPEND arg_target_libdeps_${tmp_visibility}_static ${tmp_libdep})
+				endif()
+				if(tmp_libdep_type STREQUAL "OBJECT_LIBRARY")
+					list(APPEND arg_target_libdeps_${tmp_visibility}_object ${tmp_libdep})
+				endif()
+				if(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
+					list(APPEND arg_target_libdeps_${tmp_visibility}_source ${tmp_libdep})
+				endif()
+			endif()
+		endforeach()
+	endforeach()
+
+	# === Build DXEFlags ===
+
+	foreach(tmp_libdep ${arg_target_depends_private} ${arg_target_libdeps_private})
+		get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+		if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+			list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
+		endif()
+	endforeach()
+
 	# === Build Executable ===
 
 	if(DEFINED str_tname_executable)
@@ -1759,7 +1809,6 @@ function(nx_target var_target_list str_target_name str_type_optional)
 
 	# NOTE: DXEs are not like other shared libraries
 	if(NX_TARGET_PLATFORM_MSDOS)
-		unset(lst_general_ldflags)
 		unset(lst_unsafe_cflags)
 		unset(lst_unsafe_ldflags)
 	endif()
@@ -1798,16 +1847,27 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			PUBLIC ${arg_target_includes_public}
 			INTERFACE ${arg_target_includes_interface}
 			EXPORTABLE ${arg_target_exportable})
-		nx_target_link_libraries(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
-			PUBLIC ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
-		nx_target_link_options(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
-			PUBLIC ${arg_target_ldflags_public}
-			INTERFACE ${arg_target_ldflags_interface})
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_target_link_libraries(
+				"${str_tname_module}"
+				PUBLIC ${arg_target_depends_private} ${lst_general_libs} ${arg_target_depends_public}
+				INTERFACE ${arg_target_depends_interface})
+			nx_target_link_options(
+				"${str_tname_module}"
+				PRIVATE ${arg_target_dxeflags}
+				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
+		else()
+			nx_target_link_libraries(
+				"${str_tname_module}"
+				PRIVATE ${arg_target_depends_private} ${lst_general_libs}
+				PUBLIC ${arg_target_depends_public}
+				INTERFACE ${arg_target_depends_interface})
+			nx_target_link_options(
+				"${str_tname_module}"
+				PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
+				PUBLIC ${arg_target_ldflags_public}
+				INTERFACE ${arg_target_ldflags_interface})
+		endif()
 		nx_target_sources(
 			"${str_tname_module}"
 			PRIVATE ${arg_target_sources_private}
@@ -1876,16 +1936,28 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			PUBLIC ${arg_target_includes_public}
 			INTERFACE ${arg_target_includes_interface}
 			EXPORTABLE ${arg_target_exportable})
-		nx_target_link_libraries(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
-			PUBLIC ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
-		nx_target_link_options(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_ldflags_osx} ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
-			PUBLIC ${arg_target_ldflags_public}
-			INTERFACE ${arg_target_ldflags_interface})
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_target_link_libraries(
+				"${str_tname_shared}"
+				PUBLIC ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs} ${arg_target_depends_public}
+						${arg_target_libdeps_public_shared}
+				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+			nx_target_link_options(
+				"${str_tname_shared}"
+				PRIVATE ${arg_target_dxeflags}
+				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
+		else()
+			nx_target_link_libraries(
+				"${str_tname_shared}"
+				PRIVATE ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs}
+				PUBLIC ${arg_target_depends_public} ${arg_target_libdeps_public_shared}
+				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+			nx_target_link_options(
+				"${str_tname_shared}"
+				PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
+				PUBLIC ${arg_target_ldflags_public}
+				INTERFACE ${arg_target_ldflags_interface})
+		endif()
 		nx_target_sources(
 			"${str_tname_shared}"
 			PRIVATE ${arg_target_sources_private}
@@ -1900,8 +1972,8 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			endif()
 		endif()
 		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED CMAKE_DXE3RES)
-			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.c")
-			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}DXE.o")
+			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}_DXE.c")
+			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}_DXE.o")
 			if(NOT EXISTS "${str_dxe_object}")
 				file(WRITE "${str_dxe_object}" "")
 			endif()
@@ -2009,8 +2081,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_static}"
-			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
+			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_static}
+					${arg_target_libdeps_public_static}
+			INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_static})
 		nx_target_link_options("${str_tname_static}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
 																${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -2070,8 +2143,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_objects}"
-			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
+			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_object}
+					${arg_target_libdeps_public_object}
+			INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_object})
 		nx_target_link_options("${str_tname_objects}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
 																${arg_target_ldflags_interface})
 		nx_target_sources(
@@ -2118,8 +2192,10 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			"${str_tname_interface}"
 			INTERFACE ${arg_target_includes_private} ${arg_target_includes_public} ${arg_target_includes_interface}
 			EXPORTABLE ${opt_exportable})
-		nx_target_link_libraries("${str_tname_interface}" INTERFACE ${arg_target_depends_private} ${arg_target_depends_public}
-																	${arg_target_depends_interface})
+		nx_target_link_libraries(
+			"${str_tname_interface}"
+			INTERFACE ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_depends_interface}
+						${arg_target_libdeps_private_source} ${arg_target_libdeps_public_source} ${arg_target_libdeps_interface_source})
 		nx_target_link_options("${str_tname_interface}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
 																	${arg_target_ldflags_interface})
 		nx_target_sources(
