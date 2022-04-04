@@ -33,16 +33,18 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING_EMULATOR AND NOT NX_TARGET_PLATFORM_NATIVE)
 	endif()
 endif()
 
-if(NOT DEFINED BUILD_TESTING)
-	if(DEFINED ENABLE_TESTS_ALL)
-		set(BUILD_TESTING ${ENABLE_TESTS_ALL})
-	elseif(NX_TARGET_ARCHITECTURE_NATIVE AND NX_TARGET_PLATFORM_NATIVE)
-		set(BUILD_TESTING ON)
-	elseif(DEFINED CMAKE_CROSSCOMPILING_EMULATOR)
-		set(BUILD_TESTING ON)
-	else()
-		set(BUILD_TESTING OFF)
-	endif()
+if(NX_TARGET_ARCHITECTURE_NATIVE AND NX_TARGET_PLATFORM_NATIVE)
+	set(BUILD_TESTING
+		ON
+		CACHE BOOL "Build Tests")
+elseif(DEFINED CMAKE_CROSSCOMPILING_EMULATOR)
+	set(BUILD_TESTING
+		ON
+		CACHE BOOL "Build Tests")
+else()
+	set(BUILD_TESTING
+		OFF
+		CACHE BOOL "Build Tests")
 endif()
 
 include(CTest)
@@ -62,9 +64,7 @@ function(nx_test var_target_list str_target_name)
 		set(opt_default_test OFF)
 	endif()
 
-	nx_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test})
-	nx_dependent_option(ENABLE_TESTS${NX_PROJECT_NAME} "Enable Tests - ${PROJECT_NAME}" ${BUILD_TESTING} "BUILD_TESTS${NX_PROJECT_NAME}"
-						OFF)
+	nx_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test} "BUILD_TESTING" OFF)
 
 	if(BUILD_TESTS${NX_PROJECT_NAME})
 
@@ -111,32 +111,29 @@ function(nx_test var_target_list str_target_name)
 		nx_target(lst_targets_test "test-${str_target_name}" TEST ${arg_test_buildargs})
 		nx_append(${var_target_list} ${lst_targets_test})
 
-		if(ENABLE_TESTS${NX_PROJECT_NAME})
-			foreach(tmp_target ${lst_targets_test})
-				foreach(tmp_cmdset ${arg_test_cmdset})
-					string(MAKE_C_IDENTIFIER "${tmp_cmdset}" tmp_suffix)
-					string(REPLACE " " ";" tmp_cmdset "${tmp_cmdset}")
-					add_test(
-						NAME "${tmp_target}_${tmp_suffix}"
-						WORKING_DIRECTORY "${arg_test_working_directory}"
-						COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}> ${tmp_cmdset})
-					if(DEFINED arg_test_environment)
-						set_tests_properties("${tmp_target}_${tmp_suffix}" PROPERTIES ENVIRONMENT ${arg_test_environment})
-					endif()
-				endforeach()
-				if(NOT DEFINED arg_test_cmdset)
-					add_test(
-						NAME "${tmp_target}"
-						WORKING_DIRECTORY "${arg_test_working_directory}"
-						COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}>)
-					if(DEFINED arg_test_environment)
-						set_tests_properties("${tmp_target}" PROPERTIES ENVIRONMENT ${arg_test_environment})
-					endif()
+		foreach(tmp_target ${lst_targets_test})
+			foreach(tmp_cmdset ${arg_test_cmdset})
+				string(MAKE_C_IDENTIFIER "${tmp_cmdset}" tmp_suffix)
+				string(REPLACE " " ";" tmp_cmdset "${tmp_cmdset}")
+				add_test(
+					NAME "${tmp_target}_${tmp_suffix}"
+					WORKING_DIRECTORY "${arg_test_working_directory}"
+					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}> ${tmp_cmdset})
+				if(DEFINED arg_test_environment)
+					set_tests_properties("${tmp_target}_${tmp_suffix}" PROPERTIES ENVIRONMENT ${arg_test_environment})
 				endif()
 			endforeach()
-			unset(lst_targets_test)
-		endif()
-
+			if(NOT DEFINED arg_test_cmdset)
+				add_test(
+					NAME "${tmp_target}"
+					WORKING_DIRECTORY "${arg_test_working_directory}"
+					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}>)
+				if(DEFINED arg_test_environment)
+					set_tests_properties("${tmp_target}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+				endif()
+			endif()
+		endforeach()
+		unset(lst_targets_test)
 	endif()
 
 	nx_function_end()
