@@ -1832,9 +1832,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		set(opt_nodist_default OFF)
 	endif()
 
-	nx_dependent_option(BUILD_NODIST_STATIC_LIBS "Build Tightly-Coupled ${str_target_name} Static Libs" ${opt_nodist_default}
+	nx_dependent_option(BUILD_THINLTO_${str_target_upper} "Build LTO '${str_target_name}' Static Library" ${opt_nodist_default}
 						"opt_has_unsafe_flags;opt_has_static_libs" OFF)
-	if(BUILD_NODIST_STATIC_LIBS)
+	if(BUILD_THINLTO_${str_target_upper})
 		set(lst_safe_cflags ${lst_unsafe_cflags})
 		set(lst_safe_ldflags ${lst_unsafe_ldflags})
 	endif()
