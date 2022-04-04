@@ -32,23 +32,30 @@ if(NX_TARGET_PLATFORM_DARWIN)
 	set(CMAKE_SHARED_MODULE_SUFFIX ".bundle")
 endif()
 
-# if("x${CMAKE_STATIC_LIBRARY_SUFFIX}" STREQUAL "x${CMAKE_IMPORT_LIBRARY_SUFFIX}") set(CMAKE_IMPORT_LIBRARY_SUFFIX
-# "${CMAKE_SHARED_LIBRARY_SUFFIX}${CMAKE_STATIC_LIBRARY_SUFFIX}") endif()
+if("x${CMAKE_STATIC_LIBRARY_SUFFIX}" STREQUAL "x${CMAKE_IMPORT_LIBRARY_SUFFIX}")
+	set(CMAKE_IMPORT_LIBRARY_SUFFIX "${CMAKE_SHARED_LIBRARY_SUFFIX}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+endif()
 
 # ===================================================================
 
-if(NOT DEFINED BUILD_SHARED_LIBS)
-	if(NX_TARGET_PLATFORM_ANDROID OR NX_TARGET_PLATFORM_MSDOS)
-		set(BUILD_SHARED_LIBS OFF)
-	else()
-		set(BUILD_SHARED_LIBS ON)
-	endif()
+if(NX_TARGET_PLATFORM_ANDROID OR NX_TARGET_PLATFORM_MSDOS)
+	set(BUILD_SHARED_LIBS
+		OFF
+		CACHE BOOL "Build Shared Libs")
+else()
+	set(BUILD_SHARED_LIBS
+		ON
+		CACHE BOOL "Build Shared Libs")
 endif()
 
 if(NX_TARGET_PLATFORM_MSDOS)
 	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
+if(NX_TARGET_PLATFORM_WIN32)
+	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS OFF)
 endif()
 
 # ===================================================================
@@ -243,7 +250,7 @@ function(nx_target_compile_definitions)
 			elseif(tmp_prop_type MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
 				list(APPEND arg_define_private "${arg_define_define_symbol}")
 			else()
-				message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring DEFINE_SYMBOL For ${tmp_prop_type}")
+				# message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring DEFINE_SYMBOL For ${tmp_prop_type}")
 			endif()
 		endif()
 		if(DEFINED arg_define_static_define)
@@ -252,7 +259,7 @@ function(nx_target_compile_definitions)
 			elseif(tmp_prop_type MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
 				list(APPEND arg_define_public "${arg_define_static_define}")
 			else()
-				message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring STATIC_DEFINE For ${tmp_prop_type}")
+				# message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring STATIC_DEFINE For ${tmp_prop_type}")
 			endif()
 		endif()
 
@@ -1058,15 +1065,13 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		endif()
 	elseif(str_target_type STREQUAL "DAEMON")
 		nx_option(BUILD_EXECUTABLE_${str_target_upper} "Build '${str_target_name}' Executable" ON)
-	elseif(str_target_type MATCHES "EXECUTABLE|TEST")
+	elseif(str_target_type MATCHES "EXECUTABLE")
 		nx_option(BUILD_EXECUTABLE_${str_target_upper} "Build '${str_target_name}' Executable" ON)
 	elseif(str_target_type MATCHES "TEST")
 		nx_set_global(BUILD_EXECUTABLE_${str_target_upper} ON)
 	elseif(str_target_type STREQUAL "MODULE")
 		nx_dependent_option(BUILD_MODULE_${str_target_upper} "Build '${str_target_name}' Shared Module" ON "opt_can_compile" OFF)
 		nx_dependent_option(BUILD_STATIC_${str_target_upper} "Build '${str_target_name}' Static Library" ON
-							"opt_can_compile; opt_can_static" OFF)
-		nx_dependent_option(BUILD_OBJECTS_${str_target_upper} "Build '${str_target_name}' Object Library" OFF
 							"opt_can_compile; opt_can_static" OFF)
 		nx_dependent_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ${opt_pure_interface}
 							"opt_can_static" OFF)
@@ -1081,10 +1086,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	elseif(str_target_type STREQUAL "INTERFACE")
 		nx_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ON)
 	elseif(str_target_type STREQUAL "LIBRARY")
-		nx_dependent_option(BUILD_SHARED_${str_target_upper} "Build '${str_target_name}' Shared Library" ${BUILD_SHARED_LIBS}
-							"opt_can_compile" OFF)
+		nx_dependent_option(BUILD_SHARED_${str_target_upper} "Build '${str_target_name}' Shared Library" ON
+							"BUILD_SHARED_LIBS;opt_can_compile" OFF)
 		nx_dependent_option(BUILD_STATIC_${str_target_upper} "Build '${str_target_name}' Static Library" ON "opt_can_compile" OFF)
-		nx_dependent_option(BUILD_OBJECTS_${str_target_upper} "Build '${str_target_name}' Object Library" OFF "opt_can_compile" OFF)
 		nx_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ${opt_pure_interface})
 	else()
 		message(AUTHOR_WARNING "nx_target: Target Type ${str_target_type} Unknown")
@@ -1662,28 +1666,57 @@ function(nx_target var_target_list str_target_name str_type_optional)
 	foreach(tmp_visibility "private" "public" "interface")
 		unset(arg_target_libdeps_${tmp_visibility}_shared)
 		unset(arg_target_libdeps_${tmp_visibility}_static)
-		unset(arg_target_libdeps_${tmp_visibility}_object)
 		unset(arg_target_libdeps_${tmp_visibility}_source)
 
-		foreach(tmp_libdep ${arg_target_libdeps_${tmp_visibility}})
-			if(TARGET ${tmp_libdep})
-				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+		foreach(tmp_libvar ${arg_target_libdeps_${tmp_visibility}})
+			unset(str_chosen_shared)
+			unset(str_chosen_static)
+			unset(str_chosen_source)
+
+			if(TARGET ${tmp_libvar})
+				get_target_property(tmp_libdep_type ${tmp_libvar} TYPE)
 				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
-					list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${tmp_libdep})
-				endif()
-				if(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					set(str_chosen_shared "${tmp_libvar}")
+				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
 					if(NX_TARGET_PLATFORM_MSDOS)
-						list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${tmp_libdep})
+						set(str_chosen_shared "${tmp_libvar}")
 					endif()
-					list(APPEND arg_target_libdeps_${tmp_visibility}_static ${tmp_libdep})
+					set(str_chosen_static "${tmp_libvar}")
+				elseif(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
+					set(str_chosen_source "${tmp_libvar}")
 				endif()
-				if(tmp_libdep_type STREQUAL "OBJECT_LIBRARY")
-					list(APPEND arg_target_libdeps_${tmp_visibility}_object ${tmp_libdep})
+			else()
+				foreach(tmp_libdep ${${tmp_libvar}})
+					if(TARGET ${tmp_libdep})
+						get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+						if(tmp_libdep_type STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
+							set(str_chosen_shared "${tmp_libdep}")
+						elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+							set(str_chosen_static "${tmp_libdep}")
+						elseif(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
+							set(str_chosen_source "${tmp_libdep}")
+						endif()
+					endif()
+				endforeach()
+
+				if(NOT DEFINED str_chosen_shared)
+					if(DEFINED str_chosen_static)
+						set(str_chosen_shared "${str_chosen_static}")
+					elseif(DEFINED str_chosen_source)
+						set(str_chosen_shared "${str_chosen_source}")
+					endif()
 				endif()
-				if(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
-					list(APPEND arg_target_libdeps_${tmp_visibility}_source ${tmp_libdep})
+
+				if(NOT DEFINED str_chosen_static)
+					if(DEFINED str_chosen_source)
+						set(str_chosen_static "${str_chosen_source}")
+					endif()
 				endif()
 			endif()
+
+			list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${str_chosen_shared})
+			list(APPEND arg_target_libdeps_${tmp_visibility}_static ${str_chosen_static})
+			list(APPEND arg_target_libdeps_${tmp_visibility}_source ${str_chosen_source})
 		endforeach()
 	endforeach()
 
@@ -1901,9 +1934,10 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		if(NX_TARGET_PLATFORM_MSDOS)
 			nx_target_link_libraries(
 				"${str_tname_module}"
-				PRIVATE ${arg_target_depends_private_dxe}
-				PUBLIC ${arg_target_depends_private} ${lst_general_libs} ${arg_target_depends_public}
-				INTERFACE ${arg_target_depends_interface})
+				PRIVATE ${arg_target_depends_private_dxe} ${arg_target_libdeps_private_dxe}
+				PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_shared}
+						${arg_target_libdeps_public_shared} ${lst_general_libs}
+				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
 			nx_target_link_options(
 				"${str_tname_module}"
 				PRIVATE ${arg_target_dxeflags} ${arg_target_dxelibs}
@@ -1911,9 +1945,9 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		else()
 			nx_target_link_libraries(
 				"${str_tname_module}"
-				PRIVATE ${arg_target_depends_private} ${lst_general_libs}
-				PUBLIC ${arg_target_depends_public}
-				INTERFACE ${arg_target_depends_interface})
+				PRIVATE ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs}
+				PUBLIC ${arg_target_depends_public} ${arg_target_libdeps_public_shared}
+				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
 			nx_target_link_options(
 				"${str_tname_module}"
 				PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
@@ -1992,8 +2026,8 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			nx_target_link_libraries(
 				"${str_tname_shared}"
 				PRIVATE ${arg_target_depends_private_dxe} ${arg_target_libdeps_private_dxe}
-				PUBLIC ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs} ${arg_target_depends_public}
-						${arg_target_libdeps_public_shared}
+				PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_shared}
+						${arg_target_libdeps_public_shared} ${lst_general_libs}
 				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
 			nx_target_link_options(
 				"${str_tname_shared}"
@@ -2206,9 +2240,8 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			EXPORTABLE ${arg_target_exportable})
 		nx_target_link_libraries(
 			"${str_tname_objects}"
-			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_object}
-					${arg_target_libdeps_public_object}
-			INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_object})
+			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public}
+			INTERFACE ${arg_target_depends_interface})
 		nx_target_link_options("${str_tname_objects}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
 																${arg_target_ldflags_interface})
 		nx_target_sources(
