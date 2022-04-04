@@ -153,6 +153,7 @@ with section("parse"):
         'INCLUDES': '*',
         'LDFLAGS': '*',
         'DXEFLAGS': '*',
+        'DXELIBS': '*',
         'SOURCES': '*',
         'GENERATE_EXPORT': '*',
         'GENERATE_VERSION': '*',

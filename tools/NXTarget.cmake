@@ -895,7 +895,7 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		"INCLUDES"
 		"LDFLAGS"
 		"SOURCES")
-	set(lst_pmode_multi_s "DXEFLAGS")
+	set(lst_pmode_multi_s "DXEFLAGS" "DXELIBS")
 
 	foreach(tmp_pmode ${lst_pmode_single} ${lst_pmode_multi_s})
 		string(TOLOWER "${tmp_pmode}" tmp_pmode)
@@ -1397,7 +1397,10 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			endif()
 
 			# TODO: msys2/mingw64 << internal compiler error: in seh_emit_stackalloc >>
-			if(NX_TARGET_PLATFORM_WINDOWS
+			if(NX_TARGET_BUILD_DEBUG)
+				list(APPEND lst_general_defines "_FORTIFY_SOURCE=0")
+			elseif(
+				NX_TARGET_PLATFORM_WINDOWS
 				AND NX_HOST_COMPILER_GNU
 				AND NX_HOST_PLATFORM_WINDOWS
 				AND HAS_CFLAG_FSTACK_CLASH_PROTECTION)
@@ -1665,10 +1668,13 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		foreach(tmp_libdep ${arg_target_libdeps_${tmp_visibility}})
 			if(TARGET ${tmp_libdep})
 				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
-				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
 					list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${tmp_libdep})
 				endif()
 				if(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					if(NX_TARGET_PLATFORM_MSDOS)
+						list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${tmp_libdep})
+					endif()
 					list(APPEND arg_target_libdeps_${tmp_visibility}_static ${tmp_libdep})
 				endif()
 				if(tmp_libdep_type STREQUAL "OBJECT_LIBRARY")
@@ -1679,15 +1685,6 @@ function(nx_target var_target_list str_target_name str_type_optional)
 				endif()
 			endif()
 		endforeach()
-	endforeach()
-
-	# === Build DXEFlags ===
-
-	foreach(tmp_libdep ${arg_target_depends_private} ${arg_target_libdeps_private})
-		get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
-		if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
-			list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
-		endif()
 	endforeach()
 
 	# === Build Executable ===
@@ -1815,6 +1812,58 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		unset(lst_unsafe_ldflags)
 	endif()
 
+	# === Build DXEFLAGS ===
+
+	unset(arg_target_depends_private_dxe)
+	unset(arg_target_libdeps_private_dxe)
+
+	if(NX_TARGET_PLATFORM_MSDOS)
+		foreach(tmp_libdep ${arg_target_depends_private})
+			if(TARGET ${tmp_libdep})
+				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+
+				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				endif()
+
+				list(APPEND arg_target_depends_private_dxe ${tmp_libdep})
+				list(REMOVE_ITEM arg_target_depends_private ${tmp_libdep})
+			endif()
+		endforeach()
+
+		foreach(tmp_libdep ${arg_target_libdeps_private_shared})
+			if(TARGET ${tmp_libdep})
+				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+
+				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				endif()
+
+				list(APPEND arg_target_libdeps_private_dxe ${tmp_libdep})
+				list(REMOVE_ITEM arg_target_libdeps_private_shared ${tmp_libdep})
+			endif()
+		endforeach()
+
+		foreach(tmp_libdep ${arg_target_depends_public} ${arg_target_libdeps_public_shared})
+			if(TARGET ${tmp_libdep})
+				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+
+				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
+					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				endif()
+			endif()
+		endforeach()
+	endif()
+
 	# === Build Shared Module ===
 
 	if(DEFINED str_tname_module)
@@ -1852,11 +1901,12 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		if(NX_TARGET_PLATFORM_MSDOS)
 			nx_target_link_libraries(
 				"${str_tname_module}"
+				PRIVATE ${arg_target_depends_private_dxe}
 				PUBLIC ${arg_target_depends_private} ${lst_general_libs} ${arg_target_depends_public}
 				INTERFACE ${arg_target_depends_interface})
 			nx_target_link_options(
 				"${str_tname_module}"
-				PRIVATE ${arg_target_dxeflags}
+				PRIVATE ${arg_target_dxeflags} ${arg_target_dxelibs}
 				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
 		else()
 			nx_target_link_libraries(
@@ -1941,12 +1991,13 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		if(NX_TARGET_PLATFORM_MSDOS)
 			nx_target_link_libraries(
 				"${str_tname_shared}"
+				PRIVATE ${arg_target_depends_private_dxe} ${arg_target_libdeps_private_dxe}
 				PUBLIC ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs} ${arg_target_depends_public}
 						${arg_target_libdeps_public_shared}
 				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
 			nx_target_link_options(
 				"${str_tname_shared}"
-				PRIVATE ${arg_target_dxeflags}
+				PRIVATE ${arg_target_dxeflags} ${arg_target_dxelibs}
 				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
 		else()
 			nx_target_link_libraries(
@@ -1974,16 +2025,24 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			endif()
 		endif()
 		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED CMAKE_DXE3RES)
-			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}_DXE.c")
-			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_tname_shared}_DXE.o")
+			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_oname_shared}${CMAKE_SHARED_LIBRARY_SUFFIX}.c")
+			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_oname_shared}${CMAKE_SHARED_LIBRARY_SUFFIX}${CMAKE_C_OUTPUT_EXTENSION}")
 			if(NOT EXISTS "${str_dxe_object}")
 				file(WRITE "${str_dxe_object}" "")
 			endif()
-			add_custom_command(
-				TARGET "${str_tname_shared}"
-				POST_BUILD
-				COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
-				COMMAND "${CMAKE_C_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
+			if(NX_HOST_LANGUAGE_C)
+				add_custom_command(
+					TARGET "${str_tname_shared}"
+					POST_BUILD
+					COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
+					COMMAND "${CMAKE_C_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
+			elseif(NX_HOST_LANGUAGE_CXX)
+				add_custom_command(
+					TARGET "${str_tname_shared}"
+					POST_BUILD
+					COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
+					COMMAND "${CMAKE_CXX_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
+			endif()
 			nx_target_sources("${str_tname_shared}" INTERFACE "${str_dxe_object}")
 		endif()
 
@@ -2045,6 +2104,8 @@ function(nx_target var_target_list str_target_name str_type_optional)
 			endif()
 		endif()
 	endif()
+
+	list(APPEND arg_target_depends_private ${arg_target_depends_private_dxe})
 
 	# === Build Static Library ===
 
