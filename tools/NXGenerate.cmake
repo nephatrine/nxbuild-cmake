@@ -16,142 +16,128 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
+# cmake-lint: disable=C0111,R0912,R0915
+
 include(_NXInternals)
 
-nx_guard_file()
+if(NOT NX_TARGET_PLATFORM_MSDOS)
+	if(NX_HOST_LANGUAGE_C)
+		set(CMAKE_C_VISIBILITY_PRESET "hidden")
+	endif()
+	if(NX_HOST_LANGUAGE_CXX)
+		set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
+		set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+	endif()
+endif()
+
+_nx_guard_file()
 
 nx_set(NXGENERATE_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 # ===================================================================
 
-if(NOT NX_TARGET_PLATFORM_MSDOS)
-	if(NOT DEFINED CMAKE_C_VISIBILITY_PRESET)
-		set(CMAKE_C_VISIBILITY_PRESET "hidden")
-	endif()
-	if(NOT DEFINED CMAKE_CXX_VISIBILITY_PRESET)
-		set(CMAKE_CXX_VISIBILITY_PRESET "hidden")
-	endif()
-	if(NOT DEFINED CMAKE_VISIBILITY_INLINES_HIDDEN)
-		set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
-	endif()
-endif()
-
-# ===================================================================
-
 function(nx_generate_export_header sBaseName)
-	nx_function_begin()
+	_nx_function_begin()
 
 	string(TOUPPER "${sBaseName}" sBaseName)
 	string(MAKE_C_IDENTIFIER "${sBaseName}" sBaseName)
 
-	# Defaults
+	# PARSER START ====
 
-	set(NX_GEH_BASE_NAME ${sBaseName})
-	set(NX_GEH_DEFINE_NO_DEPRECATED 0)
+	_nx_parser_initialize()
 
-	unset(NX_GEH_CUSTOM_CONTENT_FROM_VARIABLE)
-	unset(NX_GEH_DEFINE_SYMBOL)
-	unset(NX_GEH_DEPRECATED_MACRO_NAME)
-	unset(NX_GEH_EXPORT_FILE_NAME)
-	unset(NX_GEH_EXPORT_MACRO_CNAME)
-	unset(NX_GEH_EXPORT_MACRO_NAME)
-	unset(NX_GEH_INCLUDE_GUARD_NAME)
-	unset(NX_GEH_NO_DEPRECATED_MACRO_NAME)
-	unset(NX_GEH_NO_EXPORT_MACRO_NAME)
-	unset(NX_GEH_PREFIX_NAME)
-	unset(NX_GEH_STATIC_DEFINE)
+	set(lsKeywordToggle "DEFINE_NO_DEPRECATED")
+	set(lsKeywordSingle
+		"BASE_NAME"
+		"CUSTOM_CONTENT"
+		"CUSTOM_CONTENT_FROM_VARIABLE"
+		"DEFINE_SYMBOL"
+		"DEPRECATED_MACRO_NAME"
+		"EXPORT_FILE_NAME"
+		"EXPORT_MACRO_CNAME"
+		"EXPORT_MACRO_NAME"
+		"INCLUDE_GUARD_NAME"
+		"NO_DEPRECATED_MACRO_NAME"
+		"NO_EXPORT_MACRO_NAME"
+		"PREFIX_NAME"
+		"STATIC_DEFINE")
 
-	# Parse Args
-
-	set(lsParseModes
-		BASE_NAME
-		CUSTOM_CONTENT_FROM_VARIABLE
-		DEFINE_SYMBOL
-		DEPRECATED_MACRO_NAME
-		EXPORT_FILE_NAME
-		EXPORT_MACRO_CNAME
-		EXPORT_MACRO_NAME
-		INCLUDE_GUARD_NAME
-		NO_DEPRECATED_MACRO_NAME
-		NO_EXPORT_MACRO_NAME
-		PREFIX_NAME
-		STATIC_DEFINE)
-	set(lsParseToggles DEFINE_NO_DEPRECATED)
 	set(sParseMode "EXPORT_FILE_NAME")
 
-	foreach(sArgument ${ARGN})
-		if("${sArgument}" IN_LIST lsParseModes)
-			set(sParseMode "${sArgument}")
-		elseif("${sArgument}" IN_LIST lsParseToggles)
-			set(NX_GEH_${sArgument} 1)
-		else()
-			set(NX_GEH_${sParseMode} "${sArgument}")
-		endif()
-	endforeach()
+	_nx_parser_clear()
 
-	# Set Variables
+	set(sNextEXPORT_FILE_NAME "BASE_NAME")
 
-	unset(NX_GEH_CUSTOM_CONTENT)
+	_nx_parser_run(${ARGN})
 
-	if(DEFINED NX_GEH_CUSTOM_CONTENT_FROM_VARIABLE)
-		if(DEFINED ${NX_GEH_CUSTOM_CONTENT_FROM_VARIABLE})
-			set(NX_GEH_CUSTOM_CONTENT "${${NX_GEH_CUSTOM_CONTENT_FROM_VARIABLE}}")
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgDEFINE_NO_DEPRECATED)
+		set(bArgDEFINE_NO_DEPRECATED 0)
+	endif()
+
+	if(NOT DEFINED sArgBASE_NAME)
+		set(sArgBASE_NAME ${sBaseName})
+	endif()
+
+	if(DEFINED sArgCUSTOM_CONTENT_FROM_VARIABLE)
+		if(DEFINED ${sArgCUSTOM_CONTENT_FROM_VARIABLE})
+			set(sArgCUSTOM_CONTENT "${${sArgCUSTOM_CONTENT_FROM_VARIABLE}}")
 		endif()
 	endif()
 
-	if(NOT DEFINED NX_GEH_EXPORT_FILE_NAME)
-		string(TOLOWER "${sBaseName}_export.h" NX_GEH_EXPORT_FILE_NAME)
-	endif()
-
-	if(NOT DEFINED NX_GEH_DEFINE_SYMBOL)
+	if(NOT DEFINED sArgDEFINE_SYMBOL)
 		if(DEFINED ${sBaseName}_DEFINE_SYMBOL)
-			set(NX_GEH_DEFINE_SYMBOL "${${sBaseName}_DEFINE_SYMBOL}")
+			set(sArgDEFINE_SYMBOL "${${sBaseName}_DEFINE_SYMBOL}")
 		else()
-			set(NX_GEH_DEFINE_SYMBOL "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_EXPORTS")
+			set(sArgDEFINE_SYMBOL "${sArgPREFIX_NAME}${sArgBASE_NAME}_EXPORTS")
 		endif()
 	endif()
 
-	if(NOT DEFINED NX_GEH_DEPRECATED_MACRO_NAME)
-		set(NX_GEH_DEPRECATED_MACRO_NAME "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_DEPRECATED")
+	if(NOT DEFINED sArgDEPRECATED_MACRO_NAME)
+		set(sArgDEPRECATED_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_DEPRECATED")
 	endif()
 
-	if(NOT DEFINED NX_GEH_EXPORT_MACRO_CNAME)
-		set(NX_GEH_EXPORT_MACRO_CNAME "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_CEXPORT")
+	if(NOT DEFINED sArgEXPORT_FILE_NAME)
+		string(TOLOWER "${sBaseName}_export.h" sArgEXPORT_FILE_NAME)
 	endif()
 
-	if(NOT DEFINED NX_GEH_EXPORT_MACRO_NAME)
-		set(NX_GEH_EXPORT_MACRO_NAME "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_EXPORT")
+	if(NOT DEFINED sArgEXPORT_MACRO_CNAME)
+		set(sArgEXPORT_MACRO_CNAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_CEXPORT")
 	endif()
 
-	if(NOT DEFINED NX_GEH_INCLUDE_GUARD_NAME)
-		get_filename_component(NX_GEH_INCLUDE_GUARD_NAME "${NX_GEH_EXPORT_FILE_NAME}" NAME)
-		string(TOUPPER "${PROJECT_NAME}" NX_GEH_INCLUDE_GUARD_PREFIX)
-		string(TOUPPER "${NX_GEH_INCLUDE_GUARD_NAME}" NX_GEH_INCLUDE_GUARD_NAME)
-		if(NOT NX_GEH_INCLUDE_GUARD_NAME MATCHES "^${NX_GEH_INCLUDE_GUARD_PREFIX}")
-			set(NX_GEH_INCLUDE_GUARD_NAME "${NX_GEH_INCLUDE_GUARD_PREFIX}_${NX_GEH_INCLUDE_GUARD_NAME}")
-		endif()
-		string(MAKE_C_IDENTIFIER "${NX_GEH_INCLUDE_GUARD_NAME}" NX_GEH_INCLUDE_GUARD_NAME)
-		set(NX_GEH_INCLUDE_GUARD_NAME "${NX_GEH_PREFIX_NAME}${NX_GEH_INCLUDE_GUARD_NAME}")
+	if(NOT DEFINED sArgEXPORT_MACRO_NAME)
+		set(sArgEXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_EXPORT")
 	endif()
 
-	if(NOT DEFINED NX_GEH_NO_DEPRECATED_MACRO_NAME)
-		set(NX_GEH_NO_DEPRECATED_MACRO_NAME "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_NO_DEPRECATED")
+	if(NOT DEFINED sArgNO_DEPRECATED_MACRO_NAME)
+		set(sArgNO_DEPRECATED_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_NO_DEPRECATED")
 	endif()
 
-	if(NOT DEFINED NX_GEH_NO_EXPORT_MACRO_NAME)
-		set(NX_GEH_NO_EXPORT_MACRO_NAME "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_NO_EXPORT")
+	if(NOT DEFINED sArgNO_EXPORT_MACRO_NAME)
+		set(sArgNO_EXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_NO_EXPORT")
 	endif()
 
-	if(NOT DEFINED NX_GEH_STATIC_DEFINE)
+	if(NOT DEFINED sArgSTATIC_DEFINE)
 		if(DEFINED ${sBaseName}_STATIC_DEFINE)
-			set(NX_GEH_STATIC_DEFINE "${${sBaseName}_STATIC_DEFINE}")
+			set(sArgSTATIC_DEFINE "${${sBaseName}_STATIC_DEFINE}")
 		else()
-			set(NX_GEH_STATIC_DEFINE "${NX_GEH_PREFIX_NAME}${NX_GEH_BASE_NAME}_STATIC_DEFINE")
+			set(sArgSTATIC_DEFINE "${sArgPREFIX_NAME}${sArgBASE_NAME}_STATIC_DEFINE")
 		endif()
 	endif()
 
-	nx_set(${sBaseName}_DEFINE_SYMBOL "${NX_GEH_DEFINE_SYMBOL}")
-	nx_set(${sBaseName}_STATIC_DEFINE "${NX_GEH_STATIC_DEFINE}")
+	if(NOT DEFINED sArgINCLUDE_GUARD_NAME)
+		get_filename_component(sArgINCLUDE_GUARD_NAME "${sArgEXPORT_FILE_NAME}" NAME)
+		string(TOUPPER "${sArgINCLUDE_GUARD_NAME}" sArgINCLUDE_GUARD_NAME)
+		string(MAKE_C_IDENTIFIER "${sArgINCLUDE_GUARD_NAME}" sArgINCLUDE_GUARD_NAME)
+		if(NOT sArgINCLUDE_GUARD_NAME MATCHES "^${sArgBASE_NAME}")
+			set(sArgINCLUDE_GUARD_NAME "${sArgBASE_NAME}_${sArgINCLUDE_GUARD_NAME}")
+		endif()
+		set(sArgINCLUDE_GUARD_NAME "${sArgPREFIX_NAME}${sArgINCLUDE_GUARD_NAME}")
+	endif()
+
+	nx_set(${sBaseName}_DEFINE_SYMBOL "${sArgDEFINE_SYMBOL}")
+	nx_set(${sBaseName}_STATIC_DEFINE "${sArgSTATIC_DEFINE}")
 
 	if(NOT DEFINED _CURRENT_YEAR)
 		string(TIMESTAMP _CURRENT_YEAR "%Y")
@@ -160,95 +146,90 @@ function(nx_generate_export_header sBaseName)
 		string(TIMESTAMP _CURRENT_DATE "%Y%m%d")
 	endif()
 
-	# Configuration
+	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME}")
+	configure_file("${NXGENERATE_DIRECTORY}/NXGenerateExportHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME}")
 
-	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${NX_GEH_EXPORT_FILE_NAME}")
-	configure_file("${NXGENERATE_DIRECTORY}/NXGenerateExportHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${NX_GEH_EXPORT_FILE_NAME}")
-
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
 function(nx_generate_version_header sBaseName)
-	nx_function_begin()
+	_nx_function_begin()
 
 	string(TOUPPER "${sBaseName}" sBaseName)
 	string(MAKE_C_IDENTIFIER "${sBaseName}" sBaseName)
 
-	# Defaults
+	# PARSER START ====
 
-	set(NX_GVH_BASE_NAME ${sBaseName})
-	set(NX_GVH_QUERY_GIT 0)
+	_nx_parser_initialize()
 
-	if(DEFINED PROJECT_VERSION)
-		set(NX_GVH_VERSION ${PROJECT_VERSION})
-	else()
-		set(NX_GVH_VERSION "0.0.0")
-	endif()
+	set(lsKeywordToggle "QUERY_GIT")
+	set(lsKeywordSingle
+		"BASE_NAME"
+		"CUSTOM_CONTENT"
+		"CUSTOM_CONTENT_FROM_VARIABLE"
+		"GIT_MACRO_NAME"
+		"INCLUDE_GUARD_NAME"
+		"PREFIX_NAME"
+		"VERSION"
+		"VERSION_FILE_NAME"
+		"VERSION_MACRO_NAME")
 
-	unset(NX_GVH_CUSTOM_CONTENT_FROM_VARIABLE)
-	unset(NX_GVH_GIT_MACRO_NAME)
-	unset(NX_GVH_INCLUDE_GUARD_NAME)
-	unset(NX_GVH_PREFIX_NAME)
-	unset(NX_GVH_VERSION_FILE_NAME)
-	unset(NX_GVH_VERSION_MACRO_NAME)
-
-	# Parse Args
-
-	set(lsParseModes
-		BASE_NAME
-		CUSTOM_CONTENT_FROM_VARIABLE
-		GIT_MACRO_NAME
-		INCLUDE_GUARD_NAME
-		PREFIX_NAME
-		VERSION
-		VERSION_FILE_NAME
-		VERSION_MACRO_NAME)
-	set(lsParseToggles QUERY_GIT)
 	set(sParseMode "VERSION_FILE_NAME")
 
-	foreach(sArgument ${ARGN})
-		if("${sArgument}" IN_LIST lsParseModes)
-			set(sParseMode "${sArgument}")
-		elseif("${sArgument}" IN_LIST lsParseToggles)
-			set(NX_GVH_${sArgument} 1)
+	_nx_parser_clear()
+
+	set(sNextVERSION_FILE_NAME "BASE_NAME")
+
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgQUERY_GIT)
+		set(bArgQUERY_GIT OFF)
+	endif()
+
+	if(NOT DEFINED sArgBASE_NAME)
+		set(sArgBASE_NAME ${sBaseName})
+	endif()
+
+	if(DEFINED sArgCUSTOM_CONTENT_FROM_VARIABLE)
+		if(DEFINED ${sArgCUSTOM_CONTENT_FROM_VARIABLE})
+			set(sArgCUSTOM_CONTENT "${${sArgCUSTOM_CONTENT_FROM_VARIABLE}}")
+		endif()
+	endif()
+
+	if(NOT DEFINED sArgGIT_MACRO_NAME)
+		set(sArgGIT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_GIT")
+	endif()
+
+	if(NOT DEFINED sArgVERSION)
+		if(DEFINED PROJECT_VERSION)
+			set(sArgVERSION ${PROJECT_VERSION})
+		elseif(DEFINED "${NX_PROJECT_NAME}_PROJECT_VERSION")
+			set(sArgVERSION "${NX_PROJECT_NAME}_PROJECT_VERSION")
 		else()
-			set(NX_GVH_${sParseMode} "${sArgument}")
-		endif()
-	endforeach()
-
-	# Set Variables
-
-	unset(NX_GVH_CUSTOM_CONTENT)
-
-	if(DEFINED NX_GVH_CUSTOM_CONTENT_FROM_VARIABLE)
-		if(DEFINED ${NX_GVH_CUSTOM_CONTENT_FROM_VARIABLE})
-			set(NX_GVH_CUSTOM_CONTENT "${${NX_GVH_CUSTOM_CONTENT_FROM_VARIABLE}}")
+			set(sArgVERSION "0.0.0")
 		endif()
 	endif()
 
-	if(NOT DEFINED NX_GVH_VERSION_FILE_NAME)
-		string(TOLOWER "${sBaseName}_version.h" NX_GVH_VERSION_FILE_NAME)
+	if(NOT DEFINED sArgVERSION_FILE_NAME)
+		string(TOLOWER "${sArgBASE_NAME}_version.h" sArgVERSION_FILE_NAME)
 	endif()
 
-	if(NOT DEFINED NX_GVH_GIT_MACRO_NAME)
-		set(NX_GVH_GIT_MACRO_NAME "${NX_GVH_PREFIX_NAME}${NX_GVH_BASE_NAME}_GIT")
+	if(NOT DEFINED sArgVERSION_MACRO_NAME)
+		set(sArgVERSION_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_VERSION")
 	endif()
 
-	if(NOT DEFINED NX_GVH_INCLUDE_GUARD_NAME)
-		get_filename_component(NX_GVH_INCLUDE_GUARD_NAME "${NX_GVH_VERSION_FILE_NAME}" NAME)
-		string(TOUPPER "${PROJECT_NAME}" NX_GVH_INCLUDE_GUARD_PREFIX)
-		string(TOUPPER "${NX_GVH_INCLUDE_GUARD_NAME}" NX_GVH_INCLUDE_GUARD_NAME)
-		if(NOT NX_GVH_INCLUDE_GUARD_NAME MATCHES "^${NX_GVH_INCLUDE_GUARD_PREFIX}")
-			set(NX_GVH_INCLUDE_GUARD_NAME "${NX_GVH_INCLUDE_GUARD_PREFIX}_${NX_GVH_INCLUDE_GUARD_NAME}")
+	if(NOT DEFINED sArgINCLUDE_GUARD_NAME)
+		get_filename_component(sArgINCLUDE_GUARD_NAME "${sArgVERSION_FILE_NAME}" NAME)
+		string(TOUPPER "${sArgINCLUDE_GUARD_NAME}" sArgINCLUDE_GUARD_NAME)
+		string(MAKE_C_IDENTIFIER "${sArgINCLUDE_GUARD_NAME}" sArgINCLUDE_GUARD_NAME)
+		if(NOT sArgINCLUDE_GUARD_NAME MATCHES "^${sArgBASE_NAME}")
+			set(sArgINCLUDE_GUARD_NAME "${sArgBASE_NAME}_${sArgINCLUDE_GUARD_NAME}")
 		endif()
-		string(MAKE_C_IDENTIFIER "${NX_GVH_INCLUDE_GUARD_NAME}" NX_GVH_INCLUDE_GUARD_NAME)
-		set(NX_GVH_INCLUDE_GUARD_NAME "${NX_GVH_PREFIX_NAME}${NX_GVH_INCLUDE_GUARD_NAME}")
-	endif()
-
-	if(NOT DEFINED NX_GVH_VERSION_MACRO_NAME)
-		set(NX_GVH_VERSION_MACRO_NAME "${NX_GVH_PREFIX_NAME}${NX_GVH_BASE_NAME}_VERSION")
+		set(sArgINCLUDE_GUARD_NAME "${sArgPREFIX_NAME}${sArgINCLUDE_GUARD_NAME}")
 	endif()
 
 	if(NOT DEFINED _CURRENT_YEAR)
@@ -258,43 +239,40 @@ function(nx_generate_version_header sBaseName)
 		string(TIMESTAMP _CURRENT_DATE "%Y%m%d")
 	endif()
 
-	string(REPLACE "." ";" lsVersionComponents "${NX_GVH_VERSION}")
+	string(REPLACE "." ";" lsVersionComponents "${sArgVERSION}")
 	list(LENGTH lsVersionComponents nVersionComponents)
 
 	if(nVersionComponents GREATER 0)
-		list(GET lsVersionComponents 0 NX_GVH_VERSION_MAJOR)
+		list(GET lsVersionComponents 0 sArgVERSION_MAJOR)
 	else()
-		set(NX_GVH_VERSION_MAJOR 0)
+		set(sArgVERSION_MAJOR 0)
 	endif()
 	if(nVersionComponents GREATER 1)
-		list(GET lsVersionComponents 1 NX_GVH_VERSION_MINOR)
+		list(GET lsVersionComponents 1 sArgVERSION_MINOR)
 	else()
-		set(NX_GVH_VERSION_MINOR 0)
+		set(sArgVERSION_MINOR 0)
 	endif()
 	if(nVersionComponents GREATER 2)
-		list(GET lsVersionComponents 2 NX_GVH_VERSION_PATCH)
+		list(GET lsVersionComponents 2 sArgVERSION_PATCH)
 	else()
-		set(NX_GVH_VERSION_PATCH 0)
+		set(sArgVERSION_PATCH 0)
 	endif()
 
-	set(NX_GVH_VERSION_HEX "${NX_GVH_VERSION_MAJOR}*65536 + ${NX_GVH_VERSION_MINOR}*256 + ${NX_GVH_VERSION_PATCH}")
-	math(EXPR NX_GVH_VERSION_HEX "${NX_GVH_VERSION_HEX}" OUTPUT_FORMAT HEXADECIMAL)
+	set(sArgVERSION_HEX "${sArgVERSION_MAJOR}*65536 + ${sArgVERSION_MINOR}*256 + ${sArgVERSION_PATCH}")
+	math(EXPR sArgVERSION_HEX "${sArgVERSION_HEX}" OUTPUT_FORMAT HEXADECIMAL)
 
-	# Configuration
-
-	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${NX_GVH_VERSION_FILE_NAME}")
-	if(NX_GVH_QUERY_GIT)
+	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
+	if(bArgQUERY_GIT)
 		if(NOT DEFINED NX_GIT_WATCH_VARS)
 			include(GitWatch)
 		endif()
-		get_filename_component(NX_GVH_VERSION_FILE_TEMP "${NX_GVH_VERSION_FILE_NAME}" NAME)
-		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeaderGit.h.in"
-						"${CMAKE_CURRENT_BINARY_DIR}/${NX_GVH_VERSION_FILE_TEMP}.in" @ONLY)
-		nx_git_configure("${CMAKE_CURRENT_BINARY_DIR}/${NX_GVH_VERSION_FILE_TEMP}.in"
-							"${CMAKE_CURRENT_BINARY_DIR}/${NX_GVH_VERSION_FILE_NAME}")
+		get_filename_component(sIntermediateFile "${sArgVERSION_FILE_NAME}" NAME)
+		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeaderGit.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sIntermediateFile}.in"
+						@ONLY)
+		nx_git_configure("${CMAKE_CURRENT_BINARY_DIR}/${sIntermediateFile}.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
 	else()
-		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${NX_GVH_VERSION_FILE_NAME}")
+		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
 	endif()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()

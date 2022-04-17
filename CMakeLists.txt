@@ -35,15 +35,9 @@ include(NXInstall)
 # ==== NXBuild Project ====
 
 nx_project_begin(
-	MAINTAINER "Daniel Wolf"
-	CONTACT "nephatrine@gmail.com"
+	MAINTAINER "Daniel Wolf" "nephatrine@gmail.com"
 	SUPPORT "${PROJECT_HOMEPAGE_URL}/issues"
 	VENDOR "NephNET")
 
-file(
-	GLOB ${NX_PROJECT_NAME}_FILES_CMAKE
-	LIST_DIRECTORIES false
-	"tools/*.cmake")
 nx_install_custom(CONTENTS tools COMPONENT DEV)
-
 nx_project_end()

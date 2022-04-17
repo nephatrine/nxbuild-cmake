@@ -16,15 +16,11 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
-# cmake-lint: disable=C0301,C0307,R0912,R0915
+# cmake-lint: disable=C0111,C0301,R0912,R0915
 
 include(CMakePackageConfigHelpers)
 include(NXGenerate)
 include(NXInstall)
-
-nx_guard_file()
-
-# ===================================================================
 
 set(CMAKE_SHARED_MODULE_PREFIX "")
 
@@ -36,16 +32,16 @@ if("x${CMAKE_STATIC_LIBRARY_SUFFIX}" STREQUAL "x${CMAKE_IMPORT_LIBRARY_SUFFIX}")
 	set(CMAKE_IMPORT_LIBRARY_SUFFIX "${CMAKE_SHARED_LIBRARY_SUFFIX}${CMAKE_STATIC_LIBRARY_SUFFIX}")
 endif()
 
-# ===================================================================
-
-if(NX_TARGET_PLATFORM_ANDROID OR NX_TARGET_PLATFORM_MSDOS)
-	set(BUILD_SHARED_LIBS
-		OFF
-		CACHE BOOL "Build Shared Libs")
+if(DEFINED TARGET_SUPPORTS_SHARED_LIBS
+	AND NX_TARGET_PLATFORM_ANDROID
+	OR NX_TARGET_PLATFORM_MSDOS)
+	cmake_dependent_option(BUILD_SHARED_LIBS "Build Shared Libs" OFF "TARGET_SUPPORTS_SHARED_LIBS" OFF)
+elseif(DEFINED TARGET_SUPPORTS_SHARED_LIBS)
+	cmake_dependent_option(BUILD_SHARED_LIBS "Build Shared Libs" ON "TARGET_SUPPORTS_SHARED_LIBS" OFF)
+elseif(NX_TARGET_PLATFORM_ANDROID OR NX_TARGET_PLATFORM_MSDOS)
+	option(BUILD_SHARED_LIBS "Build Shared Libs" OFF)
 else()
-	set(BUILD_SHARED_LIBS
-		ON
-		CACHE BOOL "Build Shared Libs")
+	option(BUILD_SHARED_LIBS "Build Shared Libs" ON)
 endif()
 
 if(NX_TARGET_PLATFORM_MSDOS)
@@ -54,112 +50,86 @@ else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-if(NX_TARGET_PLATFORM_WIN32)
+if(NX_TARGET_PLATFORM_WINDOWS)
 	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS OFF)
 endif()
+
+if(NOT DEFINED NX_HOST_COMPILER_MSVC
+	AND DEFINED CMAKE_AR
+	AND DEFINED CMAKE_RANLIB)
+	if(NOT CMAKE_AR MATCHES "gcc-ar|llvm-ar")
+		if(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_AR)
+			nx_set(CMAKE_AR "${CMAKE_CXX_COMPILER_AR}")
+		elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_AR)
+			nx_set(CMAKE_AR "${CMAKE_C_COMPILER_AR}")
+		endif()
+	endif()
+	if(NOT CMAKE_RANLIB MATCHES "gcc-ranlib|llvm-ranlib")
+		if(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_RANLIB)
+			nx_set(CMAKE_RANLIB "${CMAKE_CXX_COMPILER_RANLIB}")
+		elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_RANLIB)
+			nx_set(CMAKE_RANLIB "${CMAKE_C_COMPILER_RANLIB}")
+		endif()
+	endif()
+
+	if(CMAKE_AR MATCHES "gcc-ar|llvm-ar" AND CMAKE_RANLIB MATCHES "gcc-ranlib|llvm-ranlib")
+		if(NX_HOST_LANGUAGE_C)
+			nx_set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+			nx_set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
+			nx_set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+		endif()
+		if(NX_HOST_LANGUAGE_CXX)
+			nx_set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
+			nx_set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
+			nx_set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
+		endif()
+	endif()
+endif()
+
+_nx_guard_file()
 
 # ===================================================================
 
 include(CMakePushCheckState)
-
 if(NX_HOST_LANGUAGE_C)
 	include(CheckCSourceCompiles)
-
-	function(nx_check_c_compiles var_out lst_cflags lst_ldflags)
-		nx_function_begin()
-		cmake_push_check_state()
-
-		if(DEFINED ${lst_cflags})
-			list(APPEND CMAKE_REQUIRED_DEFINITIONS ${${lst_cflags}})
-		endif()
-		if(DEFINED ${lst_ldflags})
-			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
-		endif()
-		list(APPEND CMAKE_REQUIRED_LIBRARIES ${ARGN})
-		set(CMAKE_REQUIRED_QUIET OFF)
-
-		set(lst_fail_regex
-			FAIL_REGEX
-			"argument unused during compilation"
-			FAIL_REGEX
-			"unsupported .*option"
-			FAIL_REGEX
-			"unknown .*option"
-			FAIL_REGEX
-			"unrecognized .*option"
-			FAIL_REGEX
-			"ignoring unknown option"
-			FAIL_REGEX
-			"warning:.*ignored"
-			FAIL_REGEX
-			"warning:.*is valid for.*but not for"
-			FAIL_REGEX
-			"warning:.*redefined"
-			FAIL_REGEX
-			"[Ww]arning: [Oo]ption")
-
-		set(str_code
-			[[
-#include <stdio.h>
-
-int main(int argc, char *argv[])
-{
-	const char *hello = "Hello World";
-	printf("%s!", hello);
-	return 0;
-}
-	]])
-
-		check_c_source_compiles("${str_code}" ${var_out} ${lst_fail_regex})
-		if(${var_out})
-			nx_set(${var_out} ON)
-		else()
-			nx_set(${var_out} OFF)
-		endif()
-
-		cmake_pop_check_state()
-		nx_function_end()
-	endfunction()
 endif()
-
 if(NX_HOST_LANGUAGE_CXX)
 	include(CheckCXXSourceCompiles)
+endif()
 
-	function(nx_check_cxx_compiles var_out lst_cflags lst_ldflags)
-		nx_function_begin()
-		cmake_push_check_state()
+function(nx_check_compiles vOutput)
+	_nx_function_begin()
+	cmake_push_check_state()
 
-		if(DEFINED ${lst_cflags})
-			list(APPEND CMAKE_REQUIRED_DEFINITIONS ${${lst_cflags}})
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordSingle "LANGUAGE" "PROGRAM")
+	set(lsKeywordMultiple "CFLAGS" "CXXFLAGS" "LDFLAGS" "LIBRARIES")
+
+	set(sParseMode "CFLAGS")
+
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED sArgLANGUAGE)
+		if(NX_HOST_LANGUAGE_CXX)
+			set(sArgLANGUAGE "CXX")
+		elseif(NX_HOST_LANGUAGE_C)
+			set(sArgLANGUAGE "C")
+		else()
+			set(sArgLANGUAGE "NONE")
 		endif()
-		if(DEFINED ${lst_ldflags})
-			list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${${lst_ldflags}})
-		endif()
-		list(APPEND CMAKE_REQUIRED_LIBRARIES ${ARGN})
-		set(CMAKE_REQUIRED_QUIET OFF)
+	endif()
 
-		set(lst_fail_regex
-			FAIL_REGEX
-			"argument unused during compilation"
-			FAIL_REGEX
-			"unsupported .*option"
-			FAIL_REGEX
-			"unknown .*option"
-			FAIL_REGEX
-			"unrecognized .*option"
-			FAIL_REGEX
-			"ignoring unknown option"
-			FAIL_REGEX
-			"warning:.*ignored"
-			FAIL_REGEX
-			"warning:.*is valid for.*but not for"
-			FAIL_REGEX
-			"warning:.*redefined"
-			FAIL_REGEX
-			"[Ww]arning: [Oo]ption")
-
-		set(str_code
-			[[
+	if(NOT DEFINED sArgPROGRAM)
+		if(sArgLANGUAGE STREQUAL "CXX")
+			set(sArgPROGRAM
+				[[
 #include <iostream>
 #include <string>
 
@@ -169,503 +139,918 @@ int main(int argc, char *argv[])
 	std::cout << hello << "!" << std::endl;
 	return 0;
 }
-	]])
+				]])
+		elseif(sArgLANGUAGE STREQUAL "C")
+			set(sArgPROGRAM
+				[[
+#include <stdio.h>
 
-		check_cxx_source_compiles("${str_code}" ${var_out} ${lst_fail_regex})
-		if(${var_out})
-			nx_set(${var_out} ON)
-		else()
-			nx_set(${var_out} OFF)
+int main(int argc, char *argv[])
+{
+	const char *hello = "Hello World";
+	printf("%s!", hello);
+	return 0;
+}
+				]])
 		endif()
-
-		cmake_pop_check_state()
-		nx_function_end()
-	endfunction()
-endif()
-
-#
-# nx_check_compiles: Test CFLAG and LDFLAG combinations!
-#
-function(nx_check_compiles var_out lst_cflags lst_ldflags)
-	nx_function_begin()
-
-	if(NX_HOST_LANGUAGE_CXX)
-		nx_check_cxx_compiles(${var_out} ${lst_cflags} ${lst_ldflags} ${ARGN})
-	elseif(NX_HOST_LANGUAGE_C)
-		nx_check_c_compiles(${var_out} ${lst_cflags} ${lst_ldflags} ${ARGN})
-	else()
-		nx_set(${var_out} OFF)
 	endif()
 
-	nx_function_end()
+	if(DEFINED lsArgCFLAGS)
+		list(APPEND CMAKE_REQUIRED_DEFINITIONS ${lsArgCFLAGS} ${lsArgCXXFLAGS})
+	endif()
+	if(DEFINED lsArgLDFLAGS)
+		list(APPEND CMAKE_REQUIRED_LINK_OPTIONS ${lsArgLDFLAGS})
+	endif()
+	if(DEFINED lsArgLIBRARIES)
+		list(APPEND CMAKE_REQUIRED_LIBRARIES ${lsArgLIBRARIES})
+	endif()
+	set(CMAKE_REQUIRED_QUIET OFF)
+
+	set(lsFailureChecks
+		FAIL_REGEX
+		"argument unused during compilation"
+		FAIL_REGEX
+		"unsupported .*option"
+		FAIL_REGEX
+		"unknown .*option"
+		FAIL_REGEX
+		"unrecognized .*option"
+		FAIL_REGEX
+		"ignoring unknown option"
+		FAIL_REGEX
+		"warning:.*ignored"
+		FAIL_REGEX
+		"warning:.*is valid for.*but not for"
+		FAIL_REGEX
+		"warning:.*redefined"
+		FAIL_REGEX
+		"[Ww]arning: [Oo]ption")
+
+	if(sArgLANGUAGE STREQUAL "CXX" AND NX_HOST_LANGUAGE_CXX)
+		check_cxx_source_compiles("${sArgPROGRAM}" ${vOutput} ${lsFailureChecks})
+	elseif(sArgLANGUAGE STREQUAL "C" AND NX_HOST_LANGUAGE_C)
+		check_c_source_compiles("${sArgPROGRAM}" ${vOutput} ${lsFailureChecks})
+	else()
+		nx_set(${vOutput} OFF)
+	endif()
+
+	cmake_pop_check_state()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_compile_definitions: Set Preprocessor Definitions
-#
+function(nx_default_flags)
+	_nx_function_begin()
+
+	set(bFormatMachO OFF)
+	set(bFormatWinPE OFF)
+	set(bFormatDJCOFF OFF)
+	set(bFormatELF OFF)
+
+	if(NX_TARGET_PLATFORM_DARWIN)
+		set(bFormatMachO ON)
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		set(bFormatDJCOFF ON)
+	elseif(NX_TARGET_PLATFORM_WINDOWS OR NX_TARGET_PLATFORM_CYGWIN)
+		set(bFormatWinPE ON)
+	else()
+		set(bFormatELF ON)
+	endif()
+
+	unset(lsDiagnosticFLAGS)
+	unset(lsDiagnosticCFLAGS)
+	unset(lsDiagnosticCXXFLAGS)
+
+	unset(lsThinCFLAGS)
+	unset(lsThinLDFLAGS)
+	unset(lsFatCFLAGS)
+	unset(lsFatLDFLAGS)
+
+	unset(lsHardenCFLAGS)
+	unset(lsHardenLDFLAGS)
+
+	unset(lsHardenCFI_CFLAGS)
+	unset(lsHardenCFI_LDFLAGS)
+	unset(lsHardenSSP_CFLAGS)
+	unset(lsHardenSSP_LDFLAGS)
+
+	unset(lsHardenASLR_LDFLAGS)
+	unset(lsHardenDEP_LDFLAGS)
+	unset(lsHardenGOT_LDFLAGS)
+	unset(lsHardenSEH_LDFLAGS)
+
+	unset(lsUnresolvedLDFLAGS)
+
+	unset(lsSanitize_Address)
+	unset(lsSanitize_CFI)
+	unset(lsSanitize_Memory)
+	unset(lsSanitize_SafeStack)
+	unset(lsSanitize_Thread)
+	unset(lsSanitize_Undefined)
+
+	unset(lsSanitize_Minimal)
+
+	if(NX_HOST_COMPILER_MSVC)
+		list(APPEND lsDiagnosticFLAGS "-W4")
+		list(APPEND lsThinCFLAGS "-GL")
+		list(APPEND lsThinLDFLAGS "-LTCG" "-INCREMENTAL:NO")
+
+		list(APPEND lsHardenASLR_LDFLAGS "-DYNAMICBASE")
+		list(APPEND lsHardenSSP_CFLAGS "-GS" "-sdl")
+
+		if(NX_TARGET_ARCHITECTURE_IA32)
+			list(APPEND lsHardenSEH_LDFLAGS "-SAFESEH")
+		elseif(NX_TARGET_ARCHITECTURE_AMD64)
+			list(APPEND lsHardenASLR_LDFLAGS "-HIGHENTROPYVA")
+		endif()
+
+		if(MSVC_VER GREATER_EQUAL 1910)
+			list(APPEND lsHardenCFI_CFLAGS "-guard:cf")
+			list(APPEND lsHardenCFI_LDFLAGS "-GUARD:CF")
+		endif()
+
+		if(MSVC_VER GREATER_EQUAL 1927)
+			if(NX_TARGET_ARCHITECTURE_AMD64 OR NX_TARGET_ARCHITECTURE_ARM64)
+				list(APPEND lsHardenCFI_CFLAGS "-guard:ehcont")
+				list(APPEND lsHardenCFI_LDFLAGS "-GUARD:EHCONT")
+			endif()
+			if(NX_TARGET_ARCHITECTURE_AMD64 OR NX_TARGET_ARCHITECTURE_IA32)
+				list(APPEND lsHardenCFI_LDFLAGS "-CETCOMPAT")
+			endif()
+		endif()
+	elseif(NX_HOST_COMPILER_CLANG)
+		list(
+			APPEND
+			lsDiagnosticFLAGS
+			"-Wall"
+			"-Wextra"
+			"-Wpedantic"
+			"-Wconversion"
+			"-Wfloat-equal"
+			"-Wformat=2"
+			"-Werror=format-security"
+			"-Wshadow"
+			"-Wthread-safety")
+		list(APPEND lsDiagnosticCFLAGS "-Wc++-compat")
+		list(APPEND lsDiagnosticCXXFLAGS "-Wnon-virtual-dtor")
+
+		list(APPEND lsFatCFLAGS "-flto=full")
+		list(APPEND lsFatLDFLAGS "-flto=full")
+		list(APPEND lsThinCFLAGS "-flto=thin")
+		list(APPEND lsThinLDFLAGS "-flto=thin")
+
+		list(APPEND lsHardenSSP_CFLAGS "-fstack-protector-strong")
+		list(APPEND lsHardenSSP_LDFLAGS "-fstack-protector-strong")
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 7)
+			list(APPEND lsHardenSSP_CFLAGS "-fcf-protection")
+			list(APPEND lsHardenSSP_LDFLAGS "-fcf-protection")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 11)
+			list(APPEND lsHardenSSP_CFLAGS "-fstack-clash-protection")
+			list(APPEND lsHardenSSP_LDFLAGS "-fstack-clash-protection")
+		endif()
+
+		list(APPEND lsSanitize_Address "-fsanitize=address")
+		list(APPEND lsSanitize_CFI "-fsanitize=cfi" "-fsanitize-cfi-cross-dso")
+		list(APPEND lsSanitize_Memory "-fsanitize=memory")
+		list(APPEND lsSanitize_SafeStack "-fsanitize=safe-stack")
+		list(APPEND lsSanitize_Thread "-fsanitize=thread")
+		list(APPEND lsSanitize_Undefined "-fsanitize=undefined" "-fsanitize=integer" "-fsanitize=nullability")
+
+		list(APPEND lsSanitize_Minimal "-fsanitize=undefined" "-fsanitize=integer" "-fsanitize-minimal-runtime")
+	elseif(NX_HOST_COMPILER_GNU)
+		list(
+			APPEND
+			lsDiagnosticFLAGS
+			"-Wall"
+			"-pedantic"
+			"-Wconversion"
+			"-Wformat"
+			"-Wshadow")
+		list(APPEND lsDiagnosticCXXFLAGS "-Wnon-virtual-dtor")
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 3.0)
+			list(APPEND lsDiagnosticFLAGS "-Wfloat-equal")
+			string(REPLACE ";-Wformat;" ";-Wformat=2;" lsDiagnosticFLAGS "${lsDiagnosticFLAGS}")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 3.4)
+			string(REPLACE "-Wall;" "-Wall;-Wextra;" lsDiagnosticFLAGS "${lsDiagnosticFLAGS}")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.1)
+			list(APPEND lsDiagnosticCFLAGS "-Wc++-compat")
+
+			list(APPEND lsHardenSSP_CFLAGS "-fstack-protector" "--param=ssp-buffer-size=4")
+			list(APPEND lsHardenSSP_LDFLAGS "-fstack-protector")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.2)
+			string(REPLACE ";-Wformat=2;" ";-Wformat=2;-Werror=format-security;" lsDiagnosticFLAGS "${lsDiagnosticFLAGS}")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.5)
+			list(APPEND lsFatCFLAGS "-flto")
+			list(APPEND lsFatLDFLAGS "-O2" "-flto" "-fuse-linker-plugin")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.8)
+			string(REPLACE ";-pedantic;" ";-Wpedantic;" lsDiagnosticFLAGS "${lsDiagnosticFLAGS}")
+
+			list(APPEND lsSanitize_Address "-fsanitize=address")
+			list(APPEND lsSanitize_Thread "-fsanitize=thread")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.9)
+			string(REPLACE "-fstack-protector;--param=ssp-buffer-size=4" "-fstack-protector-strong" lsHardenSSP_CFLAGS
+							"${lsHardenSSP_CFLAGS}")
+			string(REPLACE "-fstack-protector" "-fstack-protector-strong" lsHardenSSP_LDFLAGS "${lsHardenSSP_LDFLAGS}")
+
+			list(APPEND lsSanitize_Undefined "-fsanitize=undefined")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 5)
+			list(APPEND lsSanitize_Minimal "-fsanitize=undefined" "-fsanitize-undefined-trap-on-error")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 6)
+			list(APPEND lsDiagnosticFLAGS "-Wduplicated-cond" "-Wnull-dereference")
+
+			list(APPEND lsThinCFLAGS ${sFatCFLAGS} "-fno-fat-lto-objects")
+			list(APPEND lsThinLDFLAGS ${sFatLDFLAGS})
+			list(APPEND lsFatCFLAGS "-ffat-lto-objects")
+
+			list(APPEND lsHardenSSP_CFLAGS "-fstack-check")
+			list(APPEND lsHardenSSP_LDFLAGS "-fstack-check")
+		endif()
+
+		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 8)
+			list(APPEND lsHardenSSP_CFLAGS "-fcf-protection")
+			list(APPEND lsHardenSSP_LDFLAGS "-fcf-protection")
+			string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_CFLAGS "${lsHardenSSP_CFLAGS}")
+			string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_LDFLAGS "${lsHardenSSP_LDFLAGS}")
+
+			list(APPEND lsSanitize_Address "-fsanitize=pointer-compare" "-fsanitize=pointer-subtract")
+		endif()
+	endif()
+
+	if(NOT NX_HOST_COMPILER_MSVC)
+		list(APPEND lsUnresolvedLDFLAGS "LINKER:--no-undefined")
+
+		if(bFormatWinPE)
+			list(APPEND lsHardenASLR_LDFLAGS "LINKER:--dynamicbase")
+			list(APPEND lsHardenDEP_LDFLAGS "LINKER:--nxcompat")
+
+			if(NX_TARGET_ARCHITECTURE_IA32)
+				list(APPEND lsHardenSEH_LDFLAGS "LINKER:--no-seh")
+			elseif(NX_TARGET_ARCHITECTURE_AMD64)
+				list(APPEND lsHardenASLR_LDFLAGS "LINKER:--high-entropy-va")
+			endif()
+		elseif(NOT bFormatDJCOFF)
+			list(APPEND lsHardenASLR_LDFLAGS "LINKER:-z,text")
+			list(APPEND lsHardenDEP_LDFLAGS "LINKER:-z,noexecstack")
+			list(APPEND lsHardenGOT_LDFLAGS "LINKER:-z,now" "LINKER:-z,relro")
+
+			list(APPEND lsUnresolvedLDFLAGS "LINKER:--as-needed" "LINKER:-z,defs")
+		endif()
+	endif()
+
+	nx_check_compiles(SUPPORTS_COMPILATION)
+	if(SUPPORTS_COMPILATION)
+
+		# -- Check Diagnostics --
+
+		if(DEFINED lsDiagnosticFLAGS)
+			nx_check_compiles(SUPPORTS_DIAGNOSTIC_FLAGS CFLAGS ${lsDiagnosticFLAGS})
+			if(NOT SUPPORTS_DIAGNOSTIC_FLAGS)
+				unset(lsDiagnosticFLAGS)
+			endif()
+		endif()
+
+		if(DEFINED lsDiagnosticCFLAGS AND NX_HOST_LANGUAGE_C)
+			nx_check_compiles(
+				SUPPORTS_DIAGNOSTIC_FLAGS_C
+				LANGUAGE C
+				CFLAGS ${lsDiagnosticFLAGS} ${lsDiagnosticCFLAGS})
+			if(NOT SUPPORTS_DIAGNOSTIC_FLAGS_C)
+				unset(lsDiagnosticCFLAGS)
+			endif()
+		endif()
+
+		if(DEFINED lsDiagnosticCXXFLAGS AND NX_HOST_LANGUAGE_CXX)
+			nx_check_compiles(
+				SUPPORTS_DIAGNOSTIC_FLAGS_CXX
+				LANGUAGE CXX
+				CFLAGS ${lsDiagnosticFLAGS} ${lsDiagnosticCXXFLAGS})
+			if(NOT SUPPORTS_DIAGNOSTIC_FLAGS_CXX)
+				unset(lsDiagnosticCXXFLAGS)
+			endif()
+		endif()
+
+		if(NX_HOST_LANGUAGE_C)
+			foreach(sFlag ${lsDiagnosticCFLAGS})
+				list(APPEND lsDiagnosticFLAGS "$<$<COMPILE_LANGUAGE:C>:${sFlag}>")
+			endforeach()
+		endif()
+		if(NX_HOST_LANGUAGE_CXX)
+			foreach(sFlag ${lsDiagnosticCXXFLAGS})
+				list(APPEND lsDiagnosticFLAGS "$<$<COMPILE_LANGUAGE:CXX>:${sFlag}>")
+			endforeach()
+		endif()
+
+		# -- Check Hardening --
+
+		if(DEFINED lsHardenASLR_LDFLAGS)
+			nx_check_compiles(SUPPORTS_HARDEN_ASLR_FLAGS LDFLAGS ${lsHardenASLR_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_ASLR_FLAGS)
+				unset(lsHardenASLR_LDFLAGS)
+			endif()
+			list(APPEND lsHardenLDFLAGS ${lsHardenASLR_LDFLAGS})
+		endif()
+		if(DEFINED lsHardenDEP_LDFLAGS)
+			nx_check_compiles(SUPPORTS_HARDEN_DEP_FLAGS LDFLAGS ${lsHardenDEP_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_DEP_FLAGS)
+				unset(lsHardenDEP_LDFLAGS)
+			endif()
+			list(APPEND lsHardenLDFLAGS ${lsHardenDEP_LDFLAGS})
+		endif()
+		if(DEFINED lsHardenGOT_LDFLAGS)
+			nx_check_compiles(SUPPORTS_HARDEN_GOT_FLAGS LDFLAGS ${lsHardenGOT_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_GOT_FLAGS)
+				unset(lsHardenGOT_LDFLAGS)
+			endif()
+			list(APPEND lsHardenLDFLAGS ${lsHardenGOT_LDFLAGS})
+		endif()
+		if(DEFINED lsHardenSEH_LDFLAGS)
+			nx_check_compiles(SUPPORTS_HARDEN_SEH_FLAGS LDFLAGS ${lsHardenSEH_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_SEH_FLAGS)
+				unset(lsHardenSEH_LDFLAGS)
+			endif()
+			list(APPEND lsHardenLDFLAGS ${lsHardenSEH_LDFLAGS})
+		endif()
+
+		if(DEFINED lsHardenCFI_CFLAGS OR DEFINED lsHardenCFI_LDFLAGS)
+			nx_check_compiles(
+				SUPPORTS_HARDEN_CFI_FLAGS
+				CFLAGS ${lsHardenCFI_CFLAGS}
+				LDFLAGS ${lsHardenASLR_LDFLAGS} ${lsHardenCFI_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_CFI_FLAGS)
+				unset(lsHardenCFI_CFLAGS)
+				unset(lsHardenCFI_LDFLAGS)
+			endif()
+			list(APPEND lsHardenCFLAGS ${lsHardenCFI_CFLAGS})
+			list(APPEND lsHardenLDFLAGS ${lsHardenCFI_LDFLAGS})
+		endif()
+
+		if(DEFINED lsHardenSSP_CFLAGS OR DEFINED lsHardenSSP_LDFLAGS)
+			nx_check_compiles(
+				SUPPORTS_HARDEN_SSP_FLAGS
+				CFLAGS ${lsHardenSSP_CFLAGS}
+				LDFLAGS ${lsHardenSSP_LDFLAGS})
+			if(NOT SUPPORTS_HARDEN_SSP_FLAGS)
+				unset(lsHardenSSP_CFLAGS)
+				unset(lsHardenSSP_LDFLAGS)
+			endif()
+			list(APPEND lsHardenCFLAGS ${lsHardenSSP_CFLAGS})
+			list(APPEND lsHardenLDFLAGS ${lsHardenSSP_LDFLAGS})
+		endif()
+
+		# -- Check LTO --
+
+		if(DEFINED lsFatCFLAGS)
+			nx_check_compiles(
+				SUPPORTS_LTO_FULL
+				CFLAGS ${lsFatCFLAGS}
+				LDFLAGS ${lsFatLDFLAGS})
+			if(NOT SUPPORTS_LTO_FULL)
+				unset(lsFatCFLAGS)
+				unset(lsFatLDFLAGS)
+			endif()
+		endif()
+
+		if(DEFINED lsThinCFLAGS)
+			nx_check_compiles(
+				SUPPORTS_LTO_THIN
+				CFLAGS ${lsThinCFLAGS}
+				LDFLAGS ${lsThinLDFLAGS})
+			if(NOT SUPPORTS_LTO_THIN)
+				unset(lsThinCFLAGS)
+				unset(lsThinLDFLAGS)
+			endif()
+		endif()
+	endif()
+
+	if(DEFINED lsFatCFLAGS AND NOT DEFINED lsThinCFLAGS)
+		set(lsThinCFLAGS ${lsFatCFLAGS})
+		set(lsThinLDFLAGS ${lsFatLDFLAGS})
+	endif()
+
+	# -- Check Other Linker Flags --
+
+	if(DEFINED lsUnresolvedLDFLAGS)
+		nx_check_compiles(SUPPORTS_EXTRALINK_FLAGS LDFLAGS ${lsUnresolvedLDFLAGS})
+		if(NOT SUPPORTS_EXTRALINK_FLAGS)
+			unset(lsUnresolvedLDFLAGS)
+		endif()
+	endif()
+
+	# -- Check Sanitizers --
+
+	if(DEFINED lsSanitize_Address)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_ADDRESS
+			CFLAGS ${lsSanitize_Address}
+			LDFLAGS ${lsSanitize_Address})
+		if(NOT SUPPORTS_SANITIZER_ADDRESS)
+			unset(lsSanitize_Address)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_CFI)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_CFI
+			CFLAGS ${lsThinCFLAGS} ${lsSanitize_CFI}
+			LDFLAGS ${lsThinLDFLAGS} ${lsSanitize_CFI})
+		if(NOT SUPPORTS_SANITIZER_CFI)
+			unset(lsSanitize_CFI)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_Memory)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_MEMORY
+			CFLAGS ${lsSanitize_Memory}
+			LDFLAGS ${lsSanitize_Memory})
+		if(NOT SUPPORTS_SANITIZER_MEMORY)
+			unset(lsSanitize_Memory)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_SafeStack)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_SAFESTACK
+			CFLAGS ${lsSanitize_SafeStack}
+			LDFLAGS ${lsSanitize_SafeStack})
+		if(NOT SUPPORTS_SANITIZER_SAFESTACK)
+			unset(lsSanitize_SafeStack)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_Thread)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_THREAD
+			CFLAGS ${lsSanitize_Thread}
+			LDFLAGS ${lsSanitize_Thread})
+		if(NOT SUPPORTS_SANITIZER_THREAD)
+			unset(lsSanitize_Thread)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_Undefined)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_UNDEFINED
+			CFLAGS ${lsSanitize_Undefined}
+			LDFLAGS ${lsSanitize_Undefined})
+		if(NOT SUPPORTS_SANITIZER_UNDEFINED)
+			unset(lsSanitize_Undefined)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_Minimal)
+		nx_check_compiles(
+			SUPPORTS_SANITIZER_MINIMAL
+			CFLAGS ${lsSanitize_Minimal}
+			LDFLAGS ${lsSanitize_Minimal})
+		if(NOT SUPPORTS_SANITIZER_MINIMAL)
+			unset(lsSanitize_Minimal)
+		endif()
+	endif()
+
+	if(DEFINED lsSanitize_Minimal AND NOT DEFINED lsSanitize_Undefined)
+		set(lsSanitize_Undefined ${lsSanitize_Minimal})
+	endif()
+
+	# -- Set Flag Variables --
+
+	if(NX_HOST_COMPILER_MSVC)
+		nx_set(NX_DEFAULT_DEFINES_GENERAL "_CRT_SECURE_NO_WARNINGS")
+	elseif(SUPPORTS_HARDEN_SSP_FLAGS)
+		nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>" "_GLIBCXX_ASSERTIONS")
+	endif()
+
+	nx_set(NX_DEFAULT_CFLAGS_DIAGNOSTIC ${lsDiagnosticFLAGS})
+	nx_set(NX_DEFAULT_CFLAGS_HARDEN ${lsHardenCFLAGS})
+	nx_set(NX_DEFAULT_LDFLAGS_HARDEN ${lsHardenLDFLAGS})
+	nx_set(NX_DEFAULT_LDFLAGS_EXTRA ${lsUnresolvedLDFLAGS})
+
+	nx_set(NX_DEFAULT_SANITIZER_CFI ${lsSanitize_CFI})
+	nx_set(NX_DEFAULT_SANITIZER_SAFESTACK ${lsSanitize_SafeStack})
+	nx_set(NX_DEFAULT_SANITIZER_MINIMAL ${lsSanitize_Minimal})
+
+	nx_set(NX_DEFAULT_SANITIZER_ADDRESS ${lsSanitize_Address})
+	nx_set(NX_DEFAULT_SANITIZER_UNDEFINED ${lsSanitize_Undefined})
+	nx_set(NX_DEFAULT_SANITIZER_MEMORY ${lsSanitize_Memory})
+	nx_set(NX_DEFAULT_SANITIZER_THREAD ${lsSanitize_Thread})
+
+	if(NX_TARGET_BUILD_MULTI)
+		foreach(sFlag ${lsFatCFLAGS})
+			nx_append(APPEND NX_DEFAULT_CFLAGS_LTO_FULL "$<$<NOT:$<CONFIG:Debug>>:${sFlag}>")
+		endforeach()
+		foreach(sFlag ${lsFatLDFLAGS})
+			nx_append(APPEND NX_DEFAULT_LDFLAGS_LTO_FULL "$<$<NOT:$<CONFIG:Debug>>:${sFlag}>")
+		endforeach()
+		foreach(sFlag ${lsThinCFLAGS})
+			nx_append(APPEND NX_DEFAULT_CFLAGS_LTO_THIN "$<$<NOT:$<CONFIG:Debug>>:${sFlag}>")
+		endforeach()
+		foreach(sFlag ${lsThinLDFLAGS})
+			nx_append(APPEND NX_DEFAULT_LDFLAGS_LTO_THIN "$<$<NOT:$<CONFIG:Debug>>:${sFlag}>")
+		endforeach()
+	elseif(NOT NX_TARGET_BUILD_DEBUG)
+		if(DEFINED lsFatCFLAGS)
+			nx_set(NX_DEFAULT_CFLAGS_LTO_FULL ${lsFatCFLAGS})
+			nx_set(NX_DEFAULT_LDFLAGS_LTO_FULL ${lsFatLDFLAGS})
+		endif()
+		if(DEFINED lsThinCFLAGS)
+			nx_set(NX_DEFAULT_CFLAGS_LTO_THIN ${lsThinCFLAGS})
+			nx_set(NX_DEFAULT_LDFLAGS_LTO_THIN ${lsThinLDFLAGS})
+		endif()
+	endif()
+
+	_nx_function_end()
+endfunction()
+
+# ===================================================================
+
 function(nx_target_compile_definitions)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_single "DEFINE_SYMBOL" "STATIC_DEFINE")
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_single} ${lst_pmode_multi})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_define_${tmp_pmode})
-	endforeach()
+	set(lsKeywordSingle "DEFINE_SYMBOL" "STATIC_DEFINE")
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_single OR "${tmp_argv}" IN_LIST lst_pmode_multi)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_single)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(DEFINED arg_define_${tmp_pmode})
-				message(AUTHOR_WARNING "nx_target_compile_definitions: Option ${str_pmode_cur} Already Set")
-			else()
-				set(arg_define_${tmp_pmode} "${tmp_argv}")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_define_${tmp_pmode} "${tmp_argv}")
-		else()
-			message(AUTHOR_WARNING "nx_target_compile_definitions: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
-	endforeach()
+	# ==== PARSER END
 
-	# === Set Definitions ===
+	foreach(sTarget ${lsArgTARGETS})
+		get_target_property(sTargetType ${sTarget} TYPE)
 
-	foreach(tmp_target ${arg_define_target})
-		get_target_property(tmp_prop_type ${tmp_target} TYPE)
-		if(DEFINED arg_define_define_symbol)
-			if(tmp_prop_type MATCHES "SHARED_LIBRARY|MODULE_LIBRARY")
-				set_target_properties("${tmp_target}" PROPERTIES DEFINE_SYMBOL "${arg_define_define_symbol}")
-			elseif(tmp_prop_type MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
-				list(APPEND arg_define_private "${arg_define_define_symbol}")
-			else()
-				# message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring DEFINE_SYMBOL For ${tmp_prop_type}")
+		if(DEFINED sArgDEFINE_SYMBOL)
+			if(sTargetType MATCHES "SHARED_LIBRARY|MODULE_LIBRARY")
+				set_target_properties("${sTarget}" PROPERTIES DEFINE_SYMBOL "${sArgDEFINE_SYMBOL}")
+			elseif(sTargetType MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
+				list(APPEND lsArgPRIVATE "${sArgDEFINE_SYMBOL}")
 			endif()
 		endif()
-		if(DEFINED arg_define_static_define)
-			if(tmp_prop_type STREQUAL "INTERFACE_LIBRARY")
-				list(APPEND arg_define_interface "${arg_define_static_define}")
-			elseif(tmp_prop_type MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
-				list(APPEND arg_define_public "${arg_define_static_define}")
-			else()
-				# message(AUTHOR_WARNING "nx_target_compile_definitions: Ignoring STATIC_DEFINE For ${tmp_prop_type}")
+		if(DEFINED sArgSTATIC_DEFINE)
+			if(sTargetType STREQUAL "INTERFACE_LIBRARY")
+				list(APPEND lsArgINTERFACE "${sArgSTATIC_DEFINE}")
+			elseif(sTargetType MATCHES "STATIC_LIBRARY|OBJECT_LIBRARY")
+				list(APPEND lsArgPUBLIC "${sArgSTATIC_DEFINE}")
 			endif()
 		endif()
 
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_define_${tmp_pmode})
-				string(REPLACE ">:-D" ">:" arg_define_${tmp_pmode} "${arg_define_${tmp_pmode}}")
-				target_compile_definitions("${tmp_target}" ${tmp_visibility} ${arg_define_${tmp_pmode}})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsArg${sVisibility})
+				string(REPLACE ">:-D" ">:" lsArg${sVisibility} "${lsArg${sVisibility}}")
+				target_compile_definitions("${sTarget}" ${sVisibility} ${lsArg${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_compile_features: Set Compiler Features
-#
 function(nx_target_compile_features)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_feature_${tmp_pmode})
-	endforeach()
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif(str_pmode_cur STREQUAL "TARGET")
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_feature_${tmp_pmode} "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if("${tmp_argv}" IN_LIST CMAKE_C_COMPILE_FEATURES OR "${tmp_argv}" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
-				list(APPEND arg_feature_${tmp_pmode} "${tmp_argv}")
+	# ==== PARSER END
+
+	foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+		unset(lsFeature${sVisibility})
+		foreach(sFeature ${lsArg${sVisibility}})
+			if("${sFeature}" IN_LIST CMAKE_C_COMPILE_FEATURES OR "${sFeature}" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
+				list(APPEND lsFeature${sVisibility} "${sFeature}")
 			else()
-				message(WARNING "nx_target_compile_features: Feature '${tmp_argv}' Not Found")
+				message(WARNING "nx_target_compile_features: Feature '${sFeature}' Not Found")
 			endif()
-		else()
-			message(AUTHOR_WARNING "nx_target_compile_features: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
-	endforeach()
-
-	# === Set Features ===
-
-	foreach(tmp_target ${arg_feature_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_feature_${tmp_pmode})
-				target_compile_features("${tmp_target}" ${tmp_visibility} ${arg_feature_${tmp_pmode}})
+		endforeach()
+		foreach(sTarget ${lsArgTARGETS})
+			if(DEFINED lsFeature${sVisibility})
+				target_compile_features("${sTarget}" ${sVisibility} ${lsFeature${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_compile_options: Set Compiler Flags
-#
 function(nx_target_compile_options)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_option_${tmp_pmode})
-	endforeach()
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_option_${tmp_pmode} "${tmp_argv}")
-		else()
-			message(AUTHOR_WARNING "nx_target_compile_options: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
-	endforeach()
+	# ==== PARSER END
 
-	# === Set Flags ===
-
-	foreach(tmp_target ${arg_option_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_option_${tmp_pmode})
-				target_compile_options("${tmp_target}" ${tmp_visibility} ${arg_option_${tmp_pmode}})
+	foreach(sTarget ${lsArgTARGETS})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsArg${sVisibility})
+				target_compile_options("${sTarget}" ${sVisibility} ${lsArg${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_include_directories: Set Include Directories
-#
 function(nx_target_include_directories)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_single "EXPORTABLE")
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi} ${lst_pmode_single})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_include_${tmp_pmode})
-		unset(arg_internal_${tmp_pmode})
-	endforeach()
+	set(lsKeywordToggle "NO_INSTALL")
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi OR "${tmp_argv}" IN_LIST lst_pmode_single)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif(str_pmode_cur STREQUAL "TARGET")
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_include_${tmp_pmode} "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_single)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(DEFINED arg_include_${tmp_pmode})
-				message(AUTHOR_WARNING "nx_target_include_directories: Option ${str_pmode_cur} Already Set")
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgNO_INSTALL)
+		set(bArgNO_INSTALL OFF)
+	endif()
+
+	foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+		unset(lsInclude${sVisibility})
+		unset(lsInternal${sVisibility})
+		foreach(sInclude ${lsArg${sVisibility}})
+			if(sInclude MATCHES "<[^>]+:")
+				list(APPEND lsInclude${sVisibility} "${sInclude}")
 			else()
-				set(arg_include_${tmp_pmode} "${tmp_argv}")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(tmp_argv MATCHES "<[^>]+:")
-				list(APPEND arg_include_${tmp_pmode} "${tmp_argv}")
-			else()
-				get_filename_component(tmp_argv "${tmp_argv}" ABSOLUTE)
-				file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_BINARY_DIR}" "${tmp_argv}")
-				string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-				if(tmp_path_test STREQUAL ".." OR tmp_path_test MATCHES ":$")
-					file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${tmp_argv}")
-					string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-					if(tmp_path_test STREQUAL ".." OR tmp_path_test MATCHES ":$")
-						list(APPEND arg_include_${tmp_pmode} "${tmp_argv}")
+				get_filename_component(sInclude "${sInclude}" ABSOLUTE)
+				file(RELATIVE_PATH sRelBuild "${CMAKE_CURRENT_BINARY_DIR}" "${sInclude}")
+				string(SUBSTRING "${sRelBuild}" 0 2 sDotDot)
+				if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+					file(RELATIVE_PATH sRelSource "${CMAKE_CURRENT_SOURCE_DIR}" "${sInclude}")
+					string(SUBSTRING "${sRelSource}" 0 2 sDotDot)
+					if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+						list(APPEND lsInclude${sVisibility} "${sInclude}")
 					else()
-						list(APPEND arg_internal_${tmp_pmode} "${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}"
-								"${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+						list(APPEND lsInternal${sVisibility} "${CMAKE_CURRENT_SOURCE_DIR}/${sRelSource}"
+								"${CMAKE_CURRENT_BINARY_DIR}/${sRelSource}")
 					endif()
 				else()
-					list(APPEND arg_internal_${tmp_pmode} "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+					list(APPEND lsInternal${sVisibility} "${CMAKE_CURRENT_BINARY_DIR}/${sRelBuild}")
 				endif()
 			endif()
-		else()
-			message(AUTHOR_WARNING "nx_target_include_directories: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
-	endforeach()
-
-	# === Set Includes ===
-
-	if(NOT DEFINED arg_include_exportable)
-		set(arg_include_exportable ON)
-	endif()
-
-	foreach(tmp_visibility "PUBLIC" "INTERFACE")
-		string(TOLOWER "${tmp_visibility}" tmp_pmode)
-		if(DEFINED arg_internal_${tmp_pmode} AND arg_include_exportable)
-			nx_append(${NX_PROJECT_NAME}_DIRS_INCLUDE ${arg_internal_${tmp_pmode}})
-			list(APPEND arg_include_${tmp_pmode} "$<INSTALL_INTERFACE:${NX_INSTALL_PATHDEV_HEADERS}>")
-		endif()
-		foreach(tmp_include ${arg_internal_${tmp_pmode}})
-			list(APPEND arg_include_${tmp_pmode} "$<BUILD_INTERFACE:${tmp_include}>")
 		endforeach()
 	endforeach()
 
-	foreach(tmp_visibility "PRIVATE")
-		string(TOLOWER "${tmp_visibility}" tmp_pmode)
-		list(APPEND arg_include_${tmp_pmode} ${arg_internal_${tmp_pmode}})
+	foreach(sVisibility "PUBLIC" "INTERFACE")
+		if(DEFINED lsInternal${tmp_pmode} AND NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_DIRS_INCLUDE ${lsInternal${sVisibility}})
+			list(APPEND lsInclude${sVisibility} "$<INSTALL_INTERFACE:${NX_INSTALL_PATH_INCLUDE}>")
+		endif()
+		foreach(sInclude ${lsInternal${sVisibility}})
+			list(APPEND lsInclude${sVisibility} "$<BUILD_INTERFACE:${sInclude}>")
+		endforeach()
 	endforeach()
+	list(APPEND lsIncludePRIVATE ${lsInternalPRIVATE})
 
-	foreach(tmp_target ${arg_include_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_include_${tmp_pmode})
-				target_include_directories("${tmp_target}" ${tmp_visibility} ${arg_include_${tmp_pmode}})
+	foreach(sTarget ${lsArgTARGETS})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsInclude${sVisibility})
+				target_include_directories("${sTarget}" ${sVisibility} ${lsInclude${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_link_libraries: Set Library Dependencies
-#
 function(nx_target_link_libraries)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_library_${tmp_pmode})
-	endforeach()
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_library_${tmp_pmode} "${tmp_argv}")
-		else()
-			message(AUTHOR_WARNING "nx_target_link_libraries: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
-	endforeach()
+	# ==== PARSER END
 
-	# === Set Libraries ===
-
-	unset(arg_library_depend)
-	foreach(tmp_target ${arg_library_public} ${arg_library_private})
-		if(TARGET "${tmp_target}")
-			get_target_property(tmp_prop_aliased "${tmp_target}" ALIASED_TARGET)
-			if(tmp_prop_aliased AND TARGET "${tmp_prop_aliased}")
-				set(tmp_target "${tmp_prop_aliased}")
+	unset(lsDependencies)
+	foreach(sTarget ${lsArgPUBLIC} ${lsArgPRIVATE})
+		if(TARGET "${sTarget}")
+			get_target_property(sAliasTarget "${sTarget}" ALIASED_TARGET)
+			if(sAliasTarget AND TARGET "${sAliasTarget}")
+				set(sTarget "${sAliasTarget}")
 			endif()
-			list(APPEND arg_library_depend "${tmp_target}")
+			list(APPEND lsDependencies "${sTarget}")
 		endif()
 	endforeach()
 
 	# TODO: Is this still needed?
-	unset(arg_library_previous)
-	while(NOT "x${arg_library_depend}" STREQUAL "x${arg_library_previous}")
-		set(arg_library_previous ${arg_library_depend})
-		foreach(tmp_target ${arg_library_previous})
-			get_target_property(tmp_prop_type "${tmp_target}" TYPE)
-			if(NOT tmp_prop_type STREQUAL "INTERFACE_LIBRARY")
-				get_target_property(tmp_prop_linked "${tmp_target}" LINK_LIBRARIES)
-				foreach(tmp_candidate ${tmp_prop_linked})
-					if(TARGET "${tmp_candidate}")
-						get_target_property(tmp_prop_aliased "${tmp_candidate}" ALIASED_TARGET)
-						if(tmp_prop_aliased AND TARGET "${tmp_prop_aliased}")
-							set(tmp_candidate "${tmp_prop_aliased}")
+	unset(lsPrevDeps)
+	while(NOT "x${lsDependencies}" STREQUAL "x${lsPrevDeps}")
+		set(lsPrevDeps ${lsDependencies})
+		foreach(sTarget ${lsPrevDeps})
+			get_target_property(sTargetType "${sTarget}" TYPE)
+			if(NOT sTargetType STREQUAL "INTERFACE_LIBRARY")
+				get_target_property(lsLinkedLibs "${sTarget}" LINK_LIBRARIES)
+				foreach(sLibrary ${lsLinkedLibs})
+					if(TARGET "${sLibrary}")
+						get_target_property(sAliasTarget "${sLibrary}" ALIASED_TARGET)
+						if(sAliasTarget AND TARGET "${sAliasTarget}")
+							set(sLibrary "${sAliasTarget}")
 						endif()
-						list(APPEND arg_library_depend "${tmp_candidate}")
+						list(APPEND lsDependencies "${sLibrary}")
 					endif()
 				endforeach()
 			endif()
-			get_target_property(tmp_prop_linked "${tmp_target}" INTERFACE_LINK_LIBRARIES)
-			foreach(tmp_candidate ${tmp_prop_linked})
-				if(TARGET "${tmp_candidate}")
-					get_target_property(tmp_prop_aliased "${tmp_candidate}" ALIASED_TARGET)
-					if(tmp_prop_aliased AND TARGET "${tmp_prop_aliased}")
-						set(tmp_candidate "${tmp_prop_aliased}")
+
+			get_target_property(lsLinkedLibs "${sTarget}" INTERFACE_LINK_LIBRARIES)
+			foreach(sLibrary ${lsLinkedLibs})
+				if(TARGET "${sLibrary}")
+					get_target_property(sAliasTarget "${sLibrary}" ALIASED_TARGET)
+					if(sAliasTarget AND TARGET "${sAliasTarget}")
+						set(sLibrary "${sAliasTarget}")
 					endif()
-					list(APPEND arg_library_depend "${tmp_candidate}")
+					list(APPEND lsDependencies "${sLibrary}")
 				endif()
 			endforeach()
 		endforeach()
-		if(DEFINED arg_library_depend)
-			list(REMOVE_DUPLICATES arg_library_depend)
+
+		if(DEFINED lsDependencies)
+			list(REMOVE_DUPLICATES lsDependencies)
 		endif()
 	endwhile()
-	if(DEFINED arg_library_depend)
-		nx_append(${NX_PROJECT_NAME}_DEPENDENCIES "${arg_library_depend}")
+
+	if(DEFINED lsDependencies)
+		nx_append(${NX_PROJECT_NAME}_DEPENDENCIES "${lsDependencies}")
 	endif()
 
 	# TODO: Is this still needed?
-	foreach(tmp_target ${arg_library_depend})
-		get_target_property(tmp_prop_type "${tmp_target}" TYPE)
-		if(tmp_prop_type STREQUAL "SHARED_LIBRARY")
-			get_target_property(tmp_prop_imported "${tmp_target}" IMPORTED)
-			if(tmp_prop_imported)
-				get_target_property(tmp_prop_location "${tmp_target}" IMPORTED_LOCATION)
-				if(tmp_prop_location)
-					nx_append(${NX_PROJECT_NAME}_SHLIBS "${tmp_prop_location}")
-					nx_append(${NX_PROJECT_NAME}_SHLIBS_NOCONFIG "${tmp_prop_location}")
+	foreach(sTarget ${lsDependencies})
+		get_target_property(sTargetType "${sTarget}" TYPE)
+		if(sTargetType STREQUAL "SHARED_LIBRARY")
+			get_target_property(bImported "${sTarget}" IMPORTED)
+			if(bImported)
+				get_target_property(sImportLibrary "${sTarget}" IMPORTED_LOCATION)
+				if(sImportLibrary)
+					nx_append(${NX_PROJECT_NAME}_SHLIBS "${sImportLibrary}")
+					nx_append(${NX_PROJECT_NAME}_SHLIBS_NOCONFIG "${sImportLibrary}")
 				endif()
-				foreach(tmp_config "NOCONFIG" ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
-					string(TOUPPER "_${tmp_config}" tmp_config)
-					get_target_property(tmp_prop_location "${tmp_target}" IMPORTED_LOCATION${tmp_config})
-					if(tmp_prop_location)
-						nx_append(${NX_PROJECT_NAME}_SHLIBS "${tmp_prop_location}")
-						nx_append(${NX_PROJECT_NAME}_SHLIBS${tmp_config} "${tmp_prop_location}")
+				foreach(sBuildType "NOCONFIG" ${CMAKE_CONFIGURATION_TYPES} ${CMAKE_BUILD_TYPE})
+					string(TOUPPER "_${sBuildType}" sBuildType)
+					get_target_property(sImportLibrary "${sTarget}" IMPORTED_LOCATION${sBuildType})
+					if(sImportLibrary)
+						nx_append(${NX_PROJECT_NAME}_SHLIBS "${sImportLibrary}")
+						nx_append(${NX_PROJECT_NAME}_SHLIBS${sBuildType} "${sImportLibrary}")
 					endif()
 				endforeach()
 			endif()
 		endif()
 	endforeach()
 
-	foreach(tmp_target ${arg_library_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_library_${tmp_pmode})
-				target_link_libraries("${tmp_target}" ${tmp_visibility} ${arg_library_${tmp_pmode}})
+	foreach(sTarget ${lsArgTARGETS})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsArg${sVisibility})
+				target_link_libraries("${sTarget}" ${sVisibility} ${lsArg${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_link_options: Set Linker Flags
-#
 function(nx_target_link_options)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE" "STATIC")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_option_${tmp_pmode})
-	endforeach()
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE" "STATIC")
 
-	set(str_pmode_cur "TARGET")
+	set(sParseMode "TARGETS")
 
-	# === Parse Arguments ===
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_option_${tmp_pmode} "${tmp_argv}")
-		else()
-			message(AUTHOR_WARNING "nx_target_link_options: Parse Mode ${str_pmode_cur} Unknown")
+	# ==== PARSER END
+
+	foreach(sTarget ${lsArgTARGETS})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsArg${sVisibility})
+				target_link_options("${sTarget}" ${sVisibility} ${lsArg${sVisibility}})
+			endif()
+		endforeach()
+
+		if(DEFINED lsArgSTATIC)
+			get_target_property(lsStaticOpts "${sTarget}" STATIC_LIBRARY_OPTIONS)
+			if(NOT lsStaticOpts)
+				unset(lsStaticOpts)
+			endif()
+			list(APPEND lsStaticOpts ${lsArgSTATIC})
+			set_target_properties("${sTarget}" PROPERTIES STATIC_LIBRARY_OPTIONS "${lsStaticOpts}")
 		endif()
 	endforeach()
 
-	# === Set Flags ===
-
-	foreach(tmp_target ${arg_option_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_option_${tmp_pmode})
-				target_link_options("${tmp_target}" ${tmp_visibility} ${arg_option_${tmp_pmode}})
-			endif()
-		endforeach()
-		foreach(tmp_visibility "STATIC")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_option_${tmp_pmode})
-				get_target_property(tmp_prop_slo "${tmp_target}" STATIC_LIBRARY_OPTIONS)
-				if(NOT tmp_prop_slo)
-					unset(tmp_prop_slo)
-				endif()
-				list(APPEND tmp_prop_slo ${arg_option_${tmp_pmode}})
-				set_target_properties("${tmp_target}" PROPERTIES STATIC_LIBRARY_OPTIONS "${tmp_prop_slo}")
-			endif()
-		endforeach()
-	endforeach()
-
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target_link_options: Set Source Files
-#
 function(nx_target_sources)
-	nx_function_begin()
+	_nx_function_begin()
 
-	# === Available Parsing Modes ===
+	# PARSER START ====
 
-	set(lst_pmode_single "EXPORTABLE")
-	set(lst_pmode_multi "TARGET" "PRIVATE" "PUBLIC" "INTERFACE" "STRIP")
+	_nx_parser_initialize()
 
-	foreach(tmp_pmode ${lst_pmode_multi} ${lst_pmode_single})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_source_${tmp_pmode})
-		unset(arg_internal_${tmp_pmode})
+	set(lsKeywordToggle "NO_INSTALL")
+	set(lsKeywordMultiple "TARGETS" "PRIVATE" "PUBLIC" "INTERFACE" "STRIP")
+
+	set(sParseMode "TARGETS")
+
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgNO_INSTALL)
+		set(bArgNO_INSTALL OFF)
+	endif()
+
+	unset(lsStripPaths)
+	foreach(sStripPath ${lsArgSTRIP})
+		get_filename_component(sStripPath "${sStripPath}" ABSOLUTE)
+		file(RELATIVE_PATH sRelBuild "${CMAKE_CURRENT_BINARY_DIR}" "${sStripPath}")
+		string(SUBSTRING "${sRelBuild}" 0 2 sDotDot)
+		if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+			file(RELATIVE_PATH sRelSource "${CMAKE_CURRENT_SOURCE_DIR}" "${sStripPath}")
+			string(SUBSTRING "${sRelSource}" 0 2 sDotDot)
+			if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+				message(AUTHOR_WARNING "nx_target_sources: Source Path '${sStripPath}' Outside Scope")
+			else()
+				list(APPEND lsStripPaths "${CMAKE_CURRENT_SOURCE_DIR}/${sRelSource}" "${CMAKE_CURRENT_BINARY_DIR}/${sRelSource}")
+			endif()
+		else()
+			list(APPEND lsStripPaths "${CMAKE_CURRENT_BINARY_DIR}/${sRelBuild}")
+		endif()
 	endforeach()
-
-	set(str_pmode_cur "TARGET")
-
-	# === Parse Arguments ===
+	if(DEFINED lsStripPaths)
+		nx_append(${NX_PROJECT_NAME}_DIRS_SOURCE ${lsStripPaths})
+	endif()
 
 	if(NOT DEFINED _CURRENT_YEAR)
 		string(TIMESTAMP _CURRENT_YEAR "%Y")
@@ -674,225 +1059,140 @@ function(nx_target_sources)
 		string(TIMESTAMP _CURRENT_DATE "%Y%m%d")
 	endif()
 
-	foreach(tmp_argv ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_multi OR "${tmp_argv}" IN_LIST lst_pmode_single)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif(str_pmode_cur STREQUAL "TARGET")
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_source_${tmp_pmode} "${tmp_argv}")
-		elseif(str_pmode_cur STREQUAL "STRIP")
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			get_filename_component(tmp_argv "${tmp_argv}" ABSOLUTE)
-			file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_BINARY_DIR}" "${tmp_argv}")
-			string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-			if(tmp_path_test STREQUAL ".." OR tmp_path_test MATCHES ":$")
-				file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${tmp_argv}")
-				string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-				if(NOT tmp_path_test STREQUAL ".." AND NOT tmp_path_test MATCHES ":$")
-					list(APPEND arg_source_${tmp_pmode} "${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}"
-							"${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
-				endif()
+	foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+		unset(lsSource${sVisibility})
+		unset(lsInternal${sVisibility})
+		foreach(sSource ${lsArg${sVisibility}})
+			if(sSource MATCHES "<[^>]+:")
+				list(APPEND lsSource${sVisibility} "${sSource}")
 			else()
-				list(APPEND arg_source_${tmp_pmode} "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_single)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(DEFINED arg_source_${tmp_pmode})
-				message(AUTHOR_WARNING "nx_target_sources: Option ${str_pmode_cur} Already Set")
-			else()
-				set(arg_source_${tmp_pmode} "${tmp_argv}")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(tmp_argv MATCHES "<[^>]+:")
-				list(APPEND arg_source_${tmp_pmode} "${tmp_argv}")
-			else()
-				if(tmp_argv MATCHES ".in$")
-					string(REPLACE ".in" "" tmp_argv "${tmp_argv}")
-				endif()
-				unset(tmp_candidate)
+				unset(sOwnSource)
 
-				get_filename_component(tmp_argv "${tmp_argv}" ABSOLUTE)
-				file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_BINARY_DIR}" "${tmp_argv}")
-				string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-				if(tmp_path_test STREQUAL ".." OR tmp_path_test MATCHES ":$")
-					file(RELATIVE_PATH tmp_path_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${tmp_argv}")
-					string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-					if(tmp_path_test STREQUAL ".." OR tmp_path_test MATCHES ":$")
-						list(APPEND arg_source_${tmp_pmode} "${tmp_argv}")
-						unset(tmp_path_rel)
+				if(sSource MATCHES ".in$")
+					string(REPLACE ".in" "" sSource "${sSource}")
+				endif()
+				get_filename_component(sSource "${sSource}" ABSOLUTE)
+
+				file(RELATIVE_PATH sRelBuild "${CMAKE_CURRENT_BINARY_DIR}" "${sSource}")
+				string(SUBSTRING "${sRelBuild}" 0 2 sDotDot)
+				if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+					file(RELATIVE_PATH sRelSource "${CMAKE_CURRENT_SOURCE_DIR}" "${sSource}")
+					string(SUBSTRING "${sRelSource}" 0 2 sDotDot)
+					if(sDotDot STREQUAL ".." OR sDotDot MATCHES ":$")
+						list(APPEND lsSource${sVisibility} "${sSource}")
 					else()
-						if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}.in")
-							if(NOT str_pmode_cur STREQUAL "PRIVATE")
-								nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+						if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${sRelSource}.in")
+							if(NOT sVisibility STREQUAL "PRIVATE")
+								nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sRelSource}")
 							endif()
-							configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}.in" "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
-							set(tmp_candidate "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+							configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${sRelSource}.in" "${CMAKE_CURRENT_BINARY_DIR}/${sRelSource}")
+							set(sOwnSource "${CMAKE_CURRENT_BINARY_DIR}/${sRelSource}")
 						else()
-							set(tmp_candidate "${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}")
+							set(sOwnSource "${CMAKE_CURRENT_SOURCE_DIR}/${sRelSource}")
 						endif()
 					endif()
 				else()
-					if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}.in")
-						if(NOT str_pmode_cur STREQUAL "PRIVATE")
-							nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+					if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${sRelBuild}.in")
+						if(NOT sVisibility STREQUAL "PRIVATE")
+							nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sRelBuild}")
 						endif()
-						configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tmp_path_rel}.in" "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+						configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${sRelBuild}.in" "${CMAKE_CURRENT_BINARY_DIR}/${sRelBuild}")
 					endif()
-					set(tmp_candidate "${CMAKE_CURRENT_BINARY_DIR}/${tmp_path_rel}")
+					set(sOwnSource "${CMAKE_CURRENT_BINARY_DIR}/${sRelBuild}")
 				endif()
 
-				if(DEFINED tmp_candidate)
-					if(tmp_candidate MATCHES ".rc$")
-						if(WIN32 AND str_pmode_cur STREQUAL "PRIVATE")
-							list(APPEND arg_internal_${tmp_pmode} "${tmp_candidate}")
+				if(DEFINED sOwnSource)
+					if(sOwnSource MATCHES ".rc$")
+						if(NX_TARGET_PLATFORM_WINDOWS AND sVisibility STREQUAL "PRIVATE")
+							list(APPEND lsInternal${sVisibility} "${sOwnSource}")
 						endif()
 					else()
-						list(APPEND arg_internal_${tmp_pmode} "${tmp_candidate}")
+						list(APPEND lsInternal${sVisibility} "${sOwnSource}")
 					endif()
 				endif()
 			endif()
-		else()
-			message(AUTHOR_WARNING "nx_target_sources: Parse Mode ${str_pmode_cur} Unknown")
-		endif()
+		endforeach()
 	endforeach()
 
-	# === Set Source ===
-
-	if(DEFINED arg_source_strip)
-		nx_append(${NX_PROJECT_NAME}_DIRS_SOURCE ${arg_source_strip})
-	endif()
-	if(NOT DEFINED arg_source_exportable)
-		set(arg_source_exportable ON)
-	endif()
-
-	foreach(tmp_visibility "PUBLIC" "INTERFACE")
-		string(TOLOWER "${tmp_visibility}" tmp_pmode)
-		foreach(tmp_candidate ${arg_internal_${tmp_pmode}})
-			set(tmp_is_include OFF)
-			set(tmp_is_source OFF)
-			if(tmp_candidate MATCHES ".c$|.cpp$|.cxx$|.cc$|.rc$")
-				set(tmp_is_source ON)
-			elseif(tmp_candidate MATCHES ".h$|.hpp$|.hxx$|.hh$")
-				set(tmp_is_include ON)
-			endif()
-
-			unset(tmp_found_include)
-			foreach(tmp_path_include ${${NX_PROJECT_NAME}_DIRS_INCLUDE})
-				file(RELATIVE_PATH tmp_path_rel "${tmp_path_include}" "${tmp_candidate}")
-				string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-				if(NOT tmp_path_test STREQUAL ".." AND NOT tmp_path_test MATCHES ":$")
-					set(tmp_found_include "${tmp_path_rel}")
+	foreach(sVisibility "PUBLIC" "INTERFACE")
+		foreach(sOwnSource ${lsInternal${sVisibility}})
+			unset(sIncludePath)
+			foreach(sDirectory ${${NX_PROJECT_NAME}_DIRS_INCLUDE})
+				file(RELATIVE_PATH sRelInclude "${sDirectory}" "${sOwnSource}")
+				string(SUBSTRING "${sRelInclude}" 0 2 sDotDot)
+				if(NOT sDotDot STREQUAL ".." AND NOT sDotDot MATCHES ":$")
+					set(sIncludePath "${sRelInclude}")
 				endif()
 			endforeach()
 
-			unset(tmp_found_source)
-			foreach(tmp_path_source "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
-									${${NX_PROJECT_NAME}_DIRS_SOURCE})
-				file(RELATIVE_PATH tmp_path_rel "${tmp_path_source}" "${tmp_candidate}")
-				string(SUBSTRING "${tmp_path_rel}" 0 2 tmp_path_test)
-				if(NOT tmp_path_test STREQUAL ".." AND NOT tmp_path_test MATCHES ":$")
-					set(tmp_found_source "${tmp_path_rel}")
+			unset(sSourcePath)
+			foreach(sDirectory "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
+								${${NX_PROJECT_NAME}_DIRS_SOURCE})
+				file(RELATIVE_PATH sRelSource "${sDirectory}" "${sOwnSource}")
+				string(SUBSTRING "${sRelSource}" 0 2 sDotDot)
+				if(NOT sDotDot STREQUAL ".." AND NOT sDotDot MATCHES ":$")
+					set(sSourcePath "${sRelSource}")
 				endif()
 			endforeach()
 
-			if(DEFINED tmp_found_include AND arg_source_exportable)
-				list(APPEND arg_source_${tmp_pmode} "$<BUILD_INTERFACE:${tmp_candidate}>")
-				if(tmp_is_source)
-					list(APPEND arg_source_${tmp_pmode} "$<INSTALL_INTERFACE:${NX_INSTALL_PATHDEV_HEADERS}/${tmp_found_include}>")
-				endif()
-			elseif(DEFINED tmp_found_source)
-				list(APPEND arg_source_${tmp_pmode} "$<BUILD_INTERFACE:${tmp_candidate}>")
-				if(tmp_is_source AND arg_source_exportable)
-					list(APPEND arg_source_${tmp_pmode} "$<INSTALL_INTERFACE:${NX_INSTALL_PATHDEV_SOURCE}/${tmp_found_source}>")
-				endif()
-				if(arg_source_exportable)
-					nx_append(${NX_PROJECT_NAME}_FILES_INTERFACE "${tmp_candidate}::${tmp_found_source}")
+			if(DEFINED sIncludePath AND NOT bArgNO_INSTALL)
+				list(APPEND lsSource${sVisibility} "$<BUILD_INTERFACE:${sOwnSource}>")
+				list(APPEND lsSource${sVisibility} "$<INSTALL_INTERFACE:${NX_INSTALL_PATH_INCLUDE}/${sIncludePath}>")
+			elseif(DEFINED sSourcePath)
+				list(APPEND lsSource${sVisibility} "$<BUILD_INTERFACE:${sOwnSource}>")
+				if(NOT bArgNO_INSTALL)
+					list(APPEND lsSource${sVisibility} "$<INSTALL_INTERFACE:${NX_INSTALL_PATH_SOURCE}/${sSourcePath}>")
+					nx_append(${NX_PROJECT_NAME}_FILES_INTERFACE "${sOwnSource}::${sSourcePath}")
 				endif()
 			else()
-				list(APPEND arg_source_${tmp_pmode} "${tmp_candidate}")
+				list(APPEND lsSource${sVisibility} "${sOwnSource}")
 			endif()
 		endforeach()
-		if(DEFINED arg_internal_${tmp_pmode})
-			nx_append(${NX_PROJECT_NAME}_FILES_SOURCE ${arg_internal_${tmp_pmode}})
-		endif()
-	endforeach()
-	foreach(tmp_visibility "PRIVATE")
-		string(TOLOWER "${tmp_visibility}" tmp_pmode)
-		if(DEFINED arg_internal_${tmp_pmode})
-			list(APPEND arg_source_${tmp_pmode} ${arg_internal_${tmp_pmode}})
-			nx_append(${NX_PROJECT_NAME}_FILES_SOURCE ${arg_internal_${tmp_pmode}})
-		endif()
-	endforeach()
 
-	foreach(tmp_target ${arg_source_target})
-		foreach(tmp_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-			string(TOLOWER "${tmp_visibility}" tmp_pmode)
-			if(DEFINED arg_source_${tmp_pmode})
-				target_sources("${tmp_target}" ${tmp_visibility} ${arg_source_${tmp_pmode}})
+		if(DEFINED lsInternal${sVisibility})
+			nx_append(${NX_PROJECT_NAME}_FILES_SOURCE ${lsInternal${sVisibility}})
+		endif()
+	endforeach()
+	if(DEFINED lsInternalPRIVATE)
+		list(APPEND lsSourcePRIVATE ${lsInternalPRIVATE})
+		nx_append(${NX_PROJECT_NAME}_FILES_SOURCE ${lsInternalPRIVATE})
+	endif()
+
+	foreach(sTarget ${lsArgTARGETS})
+		foreach(sVisibility "PUBLIC" "PRIVATE" "INTERFACE")
+			if(DEFINED lsSource${sVisibility})
+				target_sources("${sTarget}" ${sVisibility} ${lsSource${sVisibility}})
 			endif()
 		endforeach()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# nx_target: Build Target
-#
-function(nx_target var_target_list str_target_name str_type_optional)
-	nx_function_begin()
+# cmake-lint: disable=E1125
 
-	string(TOUPPER "${str_target_name}" str_target_upper)
-	string(MAKE_C_IDENTIFIER "${str_target_upper}" str_target_upper)
+function(nx_target vTargetList sTargetName)
+	_nx_function_begin()
 
-	# === Handle Optional Argument ===
+	if(NOT DEFINED INSTALL_TARGETS${NX_PROJECT_NAME})
+		set(bDefaultInstall OFF)
+		if(NOT DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL OR NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+			set(bDefaultInstall ON)
+		endif()
 
-	set(str_target_type "EXECUTABLE")
-
-	if(str_type_optional STREQUAL "APPLICATION")
-		set(str_target_type "APPLICATION")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "DAEMON")
-		set(str_target_type "DAEMON")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "EXECUTABLE")
-		set(str_target_type "EXECUTABLE")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "TEST")
-		set(str_target_type "TEST")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "MODULE")
-		set(str_target_type "MODULE")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "PLUGIN")
-		set(str_target_type "PLUGIN")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "SHARED")
-		set(str_target_type "SHARED")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "STATIC")
-		set(str_target_type "STATIC")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "OBJECTS")
-		set(str_target_type "OBJECTS")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "VIRTUAL")
-		set(str_target_type "INTERFACE")
-		unset(str_type_optional)
-	elseif(str_type_optional STREQUAL "LIBRARY")
-		set(str_target_type "LIBRARY")
-		unset(str_type_optional)
+		option(INSTALL_TARGETS${NX_PROJECT_NAME} "Install Targets - ${PROJECT_NAME}" ${bDefaultInstall})
 	endif()
 
-	# === Available Parsing Modes ===
+	string(TOUPPER "${sTargetName}" sTargetUpper)
+	string(MAKE_C_IDENTIFIER "${sTargetUpper}" sTargetUpper)
 
-	set(lst_pmode_visibility "PUBLIC" "PRIVATE" "INTERFACE")
-	set(lst_pmode_single "DEFINE_SYMBOL" "STATIC_DEFINE" "OUTPUT_NAME" "OUTPUT_SHORT" "STRIP" "EXPORTABLE")
-	set(lst_pmode_single_v "GENERATE_EXPORT" "GENERATE_VERSION")
-	set(lst_pmode_multi
+	# PARSER START ====
+
+	_nx_parser_initialize(
+		"GENERATE_EXPORT"
+		"GENERATE_VERSION"
 		"CFLAGS"
 		"CXXFLAGS"
 		"DEFINES"
@@ -902,1665 +1202,1451 @@ function(nx_target var_target_list str_target_name str_type_optional)
 		"INCLUDES"
 		"LDFLAGS"
 		"SOURCES")
-	set(lst_pmode_multi_s "DXEFLAGS" "DXELIBS")
 
-	foreach(tmp_pmode ${lst_pmode_single} ${lst_pmode_multi_s})
-		string(TOLOWER "${tmp_pmode}" tmp_pmode)
-		unset(arg_target_${tmp_pmode})
-	endforeach()
+	set(lsKeywordToggle
+		"NO_EXPORT"
+		"NO_INSTALL"
+		"NO_LTO"
+		"NO_SECURE"
+		"USE_ASAN"
+		"USE_MSAN"
+		"USE_TSAN"
+		"USE_UBSAN")
+	set(lsKeywordSingle "TYPE" "DEFINE_SYMBOL" "STATIC_DEFINE" "OUTPUT_NAME" "OUTPUT_SHORT")
+	set(lsKeywordMultiple "DXEFLAGS" "DXELIBS" "STRIP")
 
-	foreach(tmp_vmode ${lst_pmode_visibility})
-		foreach(tmp_pmode ${lst_pmode_single_v} ${lst_pmode_multi})
-			string(TOLOWER "${tmp_pmode}_${tmp_vmode}" tmp_pmode)
-			unset(arg_target_${tmp_pmode})
-		endforeach()
-	endforeach()
+	set(lsKeywordToggleGENERATE_EXPORT "DEFINE_NO_DEPRECATED")
+	set(lsKeywordSingleGENERATE_EXPORT
+		"BASE_NAME"
+		"CUSTOM_CONTENT_FROM_VARIABLE"
+		"DEPRECATED_MACRO_NAME"
+		"EXPORT_FILE_NAME"
+		"EXPORT_MACRO_CNAME"
+		"EXPORT_MACRO_NAME"
+		"INCLUDE_GUARD_NAME"
+		"NO_DEPRECATED_MACRO_NAME"
+		"NO_EXPORT_MACRO_NAME"
+		"PREFIX_NAME")
 
-	set(str_pmode_cur "SOURCES")
-	set(str_vmode_cur "PRIVATE")
-	set(opt_exportable OFF)
+	set(lsKeywordToggleGENERATE_VERSION "QUERY_GIT")
+	set(lsKeywordSingleGENERATE_VERSION
+		"BASE_NAME"
+		"CUSTOM_CONTENT_FROM_VARIABLE"
+		"GIT_MACRO_NAME"
+		"INCLUDE_GUARD_NAME"
+		"PREFIX_NAME"
+		"VERSION"
+		"VERSION_FILE_NAME"
+		"VERSION_MACRO_NAME")
 
-	# === Parse Arguments ===
+	set(lsKeywordMultipleCFLAGS "INTERNAL" "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleCXXFLAGS "INTERNAL" "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleDEFINES "INTERNAL" "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleDEPENDS "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleLIBDEPS "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleFEATURES "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleINCLUDES "PRIVATE" "PUBLIC" "INTERFACE")
+	set(lsKeywordMultipleLDFLAGS "INTERNAL" "PRIVATE" "PUBLIC" "INTERFACE" "STATIC")
+	set(lsKeywordMultipleSOURCES "PRIVATE" "PUBLIC" "INTERFACE")
 
-	foreach(tmp_argv ${str_type_optional} ${ARGN})
-		if("${tmp_argv}" IN_LIST lst_pmode_single
-			OR "${tmp_argv}" IN_LIST lst_pmode_single_v
-			OR "${tmp_argv}" IN_LIST lst_pmode_multi
-			OR "${tmp_argv}" IN_LIST lst_pmode_multi_s)
-			set(str_pmode_cur "${tmp_argv}")
-		elseif("${tmp_argv}" IN_LIST lst_pmode_visibility)
-			set(str_vmode_cur "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_single)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			if(DEFINED arg_target_${tmp_pmode})
-				message(AUTHOR_WARNING "nx_target: Option ${str_pmode_cur} Already Set")
-			else()
-				set(arg_target_${tmp_pmode} "${tmp_argv}")
-			endif()
-			if(str_pmode_cur STREQUAL "OUTPUT_NAME")
-				set(str_pmode_cur "OUTPUT_SHORT")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_single_v AND "${str_vmode_cur}" IN_LIST lst_pmode_visibility)
-			if(NOT "${str_vmode_cur}" STREQUAL "PRIVATE")
-				set(opt_exportable ON)
-			endif()
-			string(TOLOWER "${str_pmode_cur}_${str_vmode_cur}" tmp_pmode)
-			if(DEFINED arg_target_${tmp_pmode})
-				message(AUTHOR_WARNING "nx_target: Option ${str_pmode_cur} Already Set")
-			else()
-				set(arg_target_${tmp_pmode} "${tmp_argv}")
-			endif()
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi_s)
-			string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-			list(APPEND arg_target_${tmp_pmode} "${tmp_argv}")
-		elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi AND "${str_vmode_cur}" IN_LIST lst_pmode_visibility)
-			if(NOT "${str_vmode_cur}" STREQUAL "PRIVATE")
-				set(opt_exportable ON)
-			endif()
-			string(TOLOWER "${str_pmode_cur}_${str_vmode_cur}" tmp_pmode)
-			list(APPEND arg_target_${tmp_pmode} "${tmp_argv}")
+	set(sComboMode "SOURCES")
+	set(sParseMode "TYPE")
+
+	_nx_parser_clear()
+
+	set(sDefaultGENERATE_EXPORT "EXPORT_FILE_NAME")
+	set(sNextEXPORT_FILE_NAME_GENERATE_EXPORT "BASE_NAME")
+
+	set(sDefaultGENERATE_VERSION "VERSION_FILE_NAME")
+	set(sNextVERSION_FILE_NAME_GENERATE_VERSION "BASE_NAME")
+
+	set(sDefaultCFLAGS "PRIVATE")
+	set(sDefaultCXXFLAGS "PRIVATE")
+	set(sDefaultDEFINES "PRIVATE")
+	set(sDefaultDEPENDS "PRIVATE")
+	set(sDefaultLIBDEPS "PRIVATE")
+	set(sDefaultFEATURES "PRIVATE")
+	set(sDefaultINCLUDES "PRIVATE")
+	set(sDefaultLDFLAGS "PRIVATE")
+	set(sDefaultSOURCES "PRIVATE")
+
+	set(sNextTYPE "PRIVATE")
+	set(sNextOUTPUT_NAME "OUTPUT_SHORT")
+
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgUSE_ASAN)
+		set(bArgUSE_ASAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_MSAN)
+		set(bArgUSE_MSAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_TSAN)
+		set(bArgUSE_TSAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_UBSAN)
+		set(bArgUSE_UBSAN OFF)
+	endif()
+
+	set(bBadSanitizers OFF)
+	set(bGoodSanitizers OFF)
+
+	if(bArgUSE_ASAN)
+		if(NOT DEFINED SUPPORTS_SANITIZER_ADDRESS OR NOT SUPPORTS_SANITIZER_ADDRESS)
+			set(bBadSanitizers ON)
 		else()
-			message(AUTHOR_WARNING "nx_target: Parse Mode ${str_vmode_cur} ${str_pmode_cur} Unknown")
+			set(bGoodSanitizers ON)
 		endif()
-	endforeach()
-
-	if(DEFINED arg_target_exportable)
-		set(opt_exportable ${arg_target_exportable})
+	endif()
+	if(bArgUSE_MSAN)
+		if(NOT DEFINED SUPPORTS_SANITIZER_MEMORY OR NOT SUPPORTS_SANITIZER_MEMORY)
+			set(bBadSanitizers ON)
+		else()
+			set(bGoodSanitizers ON)
+		endif()
+	endif()
+	if(bArgUSE_TSAN)
+		if(NOT DEFINED SUPPORTS_SANITIZER_THREAD OR NOT SUPPORTS_SANITIZER_THREAD)
+			set(bBadSanitizers ON)
+		else()
+			set(bGoodSanitizers ON)
+		endif()
+	endif()
+	if(bArgUSE_UBSAN)
+		if(NOT DEFINED SUPPORTS_SANITIZER_UNDEFINED AND NOT DEFINED SUPPORTS_SANITIZER_MINIMAL)
+			set(bBadSanitizers ON)
+		elseif(NOT SUPPORTS_SANITIZER_UNDEFINED AND NOT SUPPORTS_SANITIZER_MINIMAL)
+			set(bBadSanitizers ON)
+		else()
+			set(bGoodSanitizers ON)
+		endif()
 	endif()
 
-	# === Generate Export Header ===
-
-	unset(arg_target_generate_export)
-	unset(arg_target_generate_export_vis)
-
-	if(DEFINED arg_target_generate_export_private)
-		set(arg_target_generate_export "${arg_target_generate_export_private}")
-		set(arg_target_generate_export_vis private)
+	if(bBadSanitizers AND NOT bGoodSanitizers)
+		set(sArgTYPE "INVALID")
 	endif()
-	if(DEFINED arg_target_generate_export_public)
-		set(arg_target_generate_export "${arg_target_generate_export_public}")
-		set(arg_target_generate_export_vis public)
-	endif()
-	if(DEFINED arg_target_generate_export_interface)
-		set(arg_target_generate_export "${arg_target_generate_export_interface}")
-		set(arg_target_generate_export_vis interface)
+	if(NOT DEFINED sArgTYPE)
+		set(sArgTYPE "EXECUTABLE")
 	endif()
 
-	if(DEFINED arg_target_generate_export)
+	if(NX_TARGET_PLATFORM_MSDOS AND DEFINED sArgOUTPUT_SHORT)
+		set(sArgOUTPUT_NAME "${sArgOUTPUT_SHORT}")
+	endif()
+	if(NOT DEFINED sArgOUTPUT_NAME)
+		set(sArgOUTPUT_NAME "${sTargetName}")
+	endif()
+
+	if(NOT DEFINED bArgNO_INSTALL)
+		set(bArgNO_INSTALL OFF)
+	endif()
+	if(NOT DEFINED bArgNO_EXPORT)
+		set(bArgNO_EXPORT ON)
+		if(NOT bArgNO_INSTALL)
+			foreach(sVisibility "PUBLIC" "INTERFACE")
+				foreach(sCombo ${lsKeywordCombo})
+					if(DEFINED lsKeywordMultiple${sCombo} AND DEFINED lsArg${sVisibility}_${sCombo})
+						if("${sVisibility}" IN_LIST lsKeywordMultiple${sCombo})
+							set(bArgNO_EXPORT OFF)
+						endif()
+					endif()
+				endforeach()
+			endforeach()
+		endif()
+	endif()
+
+	unset(sNO_INSTALL)
+	if(bArgNO_EXPORT)
+		set(sNO_INSTALL "NO_INSTALL")
+	endif()
+
+	if(NOT DEFINED bArgNO_LTO)
+		set(bArgNO_LTO OFF)
+	endif()
+	if(NOT DEFINED bArgNO_SECURE)
+		set(bArgNO_SECURE OFF)
+	endif()
+
+	# === Generated Headers ===
+
+	if(DEFINED sArgEXPORT_FILE_NAME_GENERATE_EXPORT)
+		get_filename_component(sArgEXPORT_FILE_NAME_GENERATE_EXPORT "${sArgEXPORT_FILE_NAME_GENERATE_EXPORT}" ABSOLUTE BASE_DIR
+								"${CMAKE_CURRENT_BINARY_DIR}")
+		file(RELATIVE_PATH sArgEXPORT_FILE_NAME_GENERATE_EXPORT "${CMAKE_CURRENT_BINARY_DIR}" "${sArgEXPORT_FILE_NAME_GENERATE_EXPORT}")
+
+		unset(sNoDeprecated)
+		if(DEFINED bArgDEFINE_NO_DEPRECATED_GENERATE_EXPORT AND bArgDEFINE_NO_DEPRECATED_GENERATE_EXPORT)
+			set(sNoDeprecated "DEFINE_NO_DEPRECATED")
+		endif()
+		if(NOT DEFINED sArgBASE_NAME_GENERATE_EXPORT)
+			set(sArgBASE_NAME_GENERATE_EXPORT "${sTargetUpper}")
+		endif()
 		nx_generate_export_header(
-			"${str_target_name}"
-			EXPORT_FILE_NAME "${arg_target_generate_export}"
-			DEFINE_SYMBOL ${arg_target_define_symbol}
-			STATIC_DEFINE ${arg_target_static_define})
-		list(APPEND arg_target_sources_${arg_target_generate_export_vis} "${CMAKE_CURRENT_BINARY_DIR}/${arg_target_generate_export}")
-		if(NOT str_target_type STREQUAL "INTERFACE")
-			if(NOT DEFINED arg_target_define_symbol AND DEFINED ${str_target_upper}_DEFINE_SYMBOL)
-				set(arg_target_define_symbol "${${str_target_upper}_DEFINE_SYMBOL}")
-			endif()
-			if(NOT DEFINED arg_target_static_define AND DEFINED ${str_target_upper}_STATIC_DEFINE)
-				set(arg_target_static_define "${${str_target_upper}_STATIC_DEFINE}")
-			endif()
+			"${sTargetName}" ${sNoDeprecated}
+			EXPORT_FILE_NAME "${sArgEXPORT_FILE_NAME_GENERATE_EXPORT}"
+			BASE_NAME "${sArgBASE_NAME_GENERATE_EXPORT}"
+			CUSTOM_CONTENT_FROM_VARIABLE ${sArgCUSTOM_CONTENT_FROM_VARIABLE_GENERATE_EXPORT}
+			DEPRECATED_MACRO_NAME ${sArgDEPRECATED_MACRO_NAME_GENERATE_EXPORT}
+			EXPORT_MACRO_CNAME ${sArgEXPORT_MACRO_CNAME_GENERATE_EXPORT}
+			EXPORT_MACRO_NAME ${sArgEXPORT_MACRO_NAME_GENERATE_EXPORT}
+			INCLUDE_GUARD_NAME ${sArgINCLUDE_GUARD_NAME_GENERATE_EXPORT}
+			NO_DEPRECATED_MACRO_NAME ${sArgNO_DEPRECATED_MACRO_NAME_GENERATE_EXPORT}
+			NO_EXPORT_MACRO_NAME ${sArgNO_EXPORT_MACRO_NAME_GENERATE_EXPORT}
+			PREFIX_NAME ${sArgPREFIX_NAME_GENERATE_EXPORT}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL}
+			STATIC_DEFINE ${sArgSTATIC_DEFINE})
+		if(NOT DEFINED sArgDEFINE_SYMBOL AND DEFINED ${sTargetUpper}_DEFINE_SYMBOL)
+			set(sArgDEFINE_SYMBOL "${${sTargetUpper}_DEFINE_SYMBOL}")
 		endif()
-	endif()
-
-	# === Generate Version Header ===
-
-	unset(arg_target_generate_version)
-	unset(arg_target_generate_version_vis)
-
-	if(DEFINED arg_target_generate_version_private)
-		set(arg_target_generate_version "${arg_target_generate_version_private}")
-		set(arg_target_generate_version_vis private)
-	endif()
-	if(DEFINED arg_target_generate_export_public)
-		set(arg_target_generate_version "${arg_target_generate_version_public}")
-		set(arg_target_generate_version_vis public)
-	endif()
-	if(DEFINED arg_target_generate_version_interface)
-		set(arg_target_generate_version "${arg_target_generate_version_interface}")
-		set(arg_target_generate_version_vis interface)
-	endif()
-
-	if(DEFINED arg_target_generate_version)
-		if(DEFINED NX_GIT_WATCH_VARS)
-			nx_generate_version_header(
-				"${str_target_name}"
-				VERSION_FILE_NAME "${arg_target_generate_version}"
-				QUERY_GIT)
-		else()
-			nx_generate_version_header("${str_target_name}" VERSION_FILE_NAME "${arg_target_generate_version}")
+		if(NOT DEFINED sArgSTATIC_DEFINE AND DEFINED ${sTargetUpper}_STATIC_DEFINE)
+			set(sArgSTATIC_DEFINE "${${sTargetUpper}_STATIC_DEFINE}")
 		endif()
-		list(APPEND arg_target_sources_${arg_target_generate_version_vis} "${CMAKE_CURRENT_BINARY_DIR}/${arg_target_generate_version}")
+		list(APPEND lsArgPRIVATE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME_GENERATE_EXPORT}")
 	endif()
 
-	if(NX_TARGET_PLATFORM_MSDOS AND DEFINED arg_target_output_short)
-		set(arg_target_output_name "${arg_target_output_short}")
-	endif()
-	if(NOT DEFINED arg_target_output_name)
-		set(arg_target_output_name "${str_target_name}")
+	if(DEFINED sArgVERSION_FILE_NAME_GENERATE_VERSION)
+		get_filename_component(sArgVERSION_FILE_NAME_GENERATE_VERSION "${sArgVERSION_FILE_NAME_GENERATE_VERSION}" ABSOLUTE BASE_DIR
+								"${CMAKE_CURRENT_BINARY_DIR}")
+		file(RELATIVE_PATH sArgVERSION_FILE_NAME_GENERATE_VERSION "${CMAKE_CURRENT_BINARY_DIR}" "${sArgVERSION_FILE_NAME_GENERATE_VERSION}")
+
+		unset(sQueryGit)
+		if(DEFINED bArgQUERY_GIT_GENERATE_VERSION AND bArgQUERY_GIT_GENERATE_VERSION)
+			set(sQueryGit "QUERY_GIT")
+		elseif(NOT DEFINED bArgQUERY_GIT_GENERATE_VERSION AND DEFINED NX_GIT_WATCH_VARS)
+			set(sQueryGit "QUERY_GIT")
+		endif()
+		if(NOT DEFINED sArgBASE_NAME_GENERATE_VERSION)
+			set(sArgBASE_NAME_GENERATE_VERSION "${sTargetUpper}")
+		endif()
+		nx_generate_version_header(
+			"${sTargetName}" ${sQueryGit}
+			VERSION_FILE_NAME "${sArgVERSION_FILE_NAME_GENERATE_VERSION}"
+			BASE_NAME "${sArgBASE_NAME_GENERATE_VERSION}"
+			CUSTOM_CONTENT_FROM_VARIABLE ${sArgCUSTOM_CONTENT_FROM_VARIABLE_GENERATE_VERSION}
+			GIT_MACRO_NAME ${sArgGIT_MACRO_NAME_GENERATE_VERSION}
+			INCLUDE_GUARD_NAME ${sArgINCLUDE_GUARD_NAME_GENERATE_VERSION}
+			PREFIX_NAME ${sArgPREFIX_NAME_GENERATE_VERSION}
+			VERSION ${sArgVERSION_GENERATE_VERSION}
+			VERSION_MACRO_NAME ${sArgVERSION_MACRO_NAME_GENERATE_VERSION})
+		list(APPEND lsArgPRIVATE_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME_GENERATE_VERSION}")
 	endif()
 
 	# === Determine Targets To Build ===
 
-	set(opt_can_compile OFF)
-	if(DEFINED arg_target_sources_private OR DEFINED arg_target_sources_public)
-		set(opt_can_compile ON)
+	set(bHasSource OFF)
+	if(lsArgPRIVATE_SOURCES MATCHES "[.]c$|[.]cpp$|[.]cxx$|[.]cc$|[.]c;|[.]cpp;|[.]cxx;|[.]cc;")
+		set(bHasSource ON)
+	endif()
+	if(lsArgPUBLIC_SOURCES MATCHES "[.]c$|[.]cpp$|[.]cxx$|[.]cc$|[.]c;|[.]cpp;|[.]cxx;|[.]cc;")
+		set(bHasSource ON)
 	endif()
 
-	set(opt_can_static OFF)
-	if(DEFINED arg_target_static_define)
-		set(opt_can_static ON)
-	endif()
-
-	set(opt_pure_interface OFF)
-	if(NOT opt_can_compile)
-		set(opt_pure_interface ON)
-	endif()
-
-	if(str_target_type STREQUAL "APPLICATION")
+	if(sArgTYPE STREQUAL "APPLICATION")
 		if(NX_TARGET_PLATFORM_ANDROID)
-			nx_option(BUILD_MODULE_${str_target_upper} "Build '${str_target_name}' Android Module" ON)
-		else()
-			nx_option(BUILD_EXECUTABLE_${str_target_upper} "Build '${str_target_name}' Executable" ON)
-		endif()
-	elseif(str_target_type STREQUAL "DAEMON")
-		nx_option(BUILD_EXECUTABLE_${str_target_upper} "Build '${str_target_name}' Executable" ON)
-	elseif(str_target_type MATCHES "EXECUTABLE")
-		nx_option(BUILD_EXECUTABLE_${str_target_upper} "Build '${str_target_name}' Executable" ON)
-	elseif(str_target_type MATCHES "TEST")
-		nx_set_global(BUILD_EXECUTABLE_${str_target_upper} ON)
-	elseif(str_target_type STREQUAL "MODULE")
-		nx_dependent_option(BUILD_MODULE_${str_target_upper} "Build '${str_target_name}' Shared Module" ON "opt_can_compile" OFF)
-		nx_dependent_option(BUILD_STATIC_${str_target_upper} "Build '${str_target_name}' Static Library" ON
-							"opt_can_compile; opt_can_static" OFF)
-		nx_dependent_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ${opt_pure_interface}
-							"opt_can_static" OFF)
-	elseif(str_target_type STREQUAL "PLUGIN")
-		nx_option(BUILD_MODULE_${str_target_upper} "Build '${str_target_name}' Shared Module" ON)
-	elseif(str_target_type STREQUAL "SHARED")
-		nx_option(BUILD_SHARED_${str_target_upper} "Build '${str_target_name}' Shared Library" ON)
-	elseif(str_target_type STREQUAL "STATIC")
-		nx_option(BUILD_STATIC_${str_target_upper} "Build '${str_target_name}' Static Library" ON)
-	elseif(str_target_type STREQUAL "OBJECTS")
-		nx_option(BUILD_OBJECTS_${str_target_upper} "Build '${str_target_name}' Object Library" ON)
-	elseif(str_target_type STREQUAL "INTERFACE")
-		nx_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ON)
-	elseif(str_target_type STREQUAL "LIBRARY")
-		nx_dependent_option(BUILD_SHARED_${str_target_upper} "Build '${str_target_name}' Shared Library" ON
-							"BUILD_SHARED_LIBS;opt_can_compile" OFF)
-		nx_dependent_option(BUILD_STATIC_${str_target_upper} "Build '${str_target_name}' Static Library" ON "opt_can_compile" OFF)
-		nx_option(BUILD_INTERFACE_${str_target_upper} "Build '${str_target_name}' Interface Library" ${opt_pure_interface})
-	else()
-		message(AUTHOR_WARNING "nx_target: Target Type ${str_target_type} Unknown")
-	endif()
-
-	# === Target Naming ===
-
-	foreach(tmp_type "executable" "module" "shared" "static" "objects" "interface")
-		string(TOUPPER "${tmp_type}" str_type_upper)
-
-		unset(str_tname_${tmp_type})
-		if(DEFINED BUILD_${str_type_upper}_${str_target_upper} AND BUILD_${str_type_upper}_${str_target_upper})
-			set(str_tname_${tmp_type} "${str_target_name}")
-		endif()
-
-		set(str_oname_${tmp_type} "${arg_target_output_name}")
-	endforeach()
-
-	set(opt_soversion OFF)
-	set(opt_importlib OFF)
-	if(NX_TARGET_PLATFORM_CYGWIN
-		OR NX_TARGET_PLATFORM_MSDOS
-		OR NX_TARGET_PLATFORM_WINDOWS)
-		set(opt_importlib ON)
-	endif()
-	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT)
-		string(REPLACE "." "-" tmp_soversion "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
-		if(opt_importlib)
-			set(str_oname_shared "${str_oname_shared}${tmp_soversion}")
-		else()
-			set(opt_soversion ON)
-			set(str_oname_shared "${str_oname_shared}")
-		endif()
-		set(str_oname_static "${str_oname_static}${tmp_soversion}")
-		set(str_oname_objects "${str_oname_objects}${tmp_soversion}")
-	elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT AND opt_exportable)
-		string(REPLACE "." "-" tmp_version "${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
-		set(str_oname_shared "${str_oname_shared}-${tmp_version}")
-		set(str_oname_static "${str_oname_static}-${tmp_version}")
-		set(str_oname_objects "${str_oname_objects}-${tmp_version}")
-	endif()
-	if(opt_importlib)
-		if("x${CMAKE_STATIC_LIBRARY_SUFFIX}" STREQUAL "x${CMAKE_IMPORT_LIBRARY_SUFFIX}")
-			if("x${str_oname_shared}" STREQUAL "x${str_oname_static}")
-				set(str_oname_static "${str_oname_static}_s")
-			endif()
-		endif()
-	endif()
-	if(NX_HOST_LANGUAGE_CXX AND DEFINED NX_TARGET_CXXABI_STRING)
-		set(str_oname_shared "${str_oname_shared}-${NX_TARGET_CXXABI_STRING}")
-		set(str_oname_static "${str_oname_static}-${NX_TARGET_CXXABI_STRING}")
-		set(str_oname_objects "${str_oname_objects}-${NX_TARGET_CXXABI_STRING}")
-	endif()
-
-	foreach(tmp_type "executable" "module" "shared")
-		if(NX_TARGET_PLATFORM_MSDOS)
-			if(NOT str_target_type STREQUAL "TEST")
-				nx_string_limit(str_oname_${tmp_type} "${str_oname_${tmp_type}}" 8)
-			endif()
-			string(TOUPPER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
-		elseif(NX_TARGET_PLATFORM_POSIX AND NOT NX_TARGET_PLATFORM_HAIKU)
-			string(TOLOWER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
-		endif()
-	endforeach()
-	foreach(tmp_type "static" "objects" "interface")
-		if(NX_TARGET_PLATFORM_MSDOS)
-			string(TOUPPER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
-		elseif(NX_TARGET_PLATFORM_POSIX AND NOT NX_TARGET_PLATFORM_HAIKU)
-			string(TOLOWER "${str_oname_${tmp_type}}" str_oname_${tmp_type})
-		endif()
-	endforeach()
-
-	# NOTE: Object folder name is the target name rather than output name.
-	if(DEFINED str_tname_objects)
-		set(str_tname_objects "${str_oname_objects}")
-	endif()
-
-	# === Determine Filenames ===
-
-	unset(str_fname_sonl1)
-	unset(str_fname_sonl2)
-
-	string(TOUPPER "CMAKE_${CMAKE_BUILD_TYPE}_POSTFIX" var_postfix)
-	set(str_fname_executable "${CMAKE_EXECUTABLE_PREFIX}${str_oname_executable}${${var_postfix}}${CMAKE_EXECUTABLE_SUFFIX}")
-	set(str_fname_module "${CMAKE_SHARED_MODULE_PREFIX}${str_oname_module}${${var_postfix}}${CMAKE_SHARED_MODULE_SUFFIX}")
-	set(str_fname_static "${CMAKE_STATIC_LIBRARY_PREFIX}${str_oname_static}${${var_postfix}}${CMAKE_STATIC_LIBRARY_SUFFIX}")
-
-	if(opt_soversion)
-		if(NX_TARGET_PLATFORM_DARWIN)
-			set(str_fname_shared
-				"${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}"
-			)
-			set(str_fname_import
-				"${CMAKE_IMPORT_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}${CMAKE_IMPORT_LIBRARY_SUFFIX}"
-			)
-			set(str_fname_sonl1
-				"${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}${CMAKE_SHARED_LIBRARY_SUFFIX}"
-			)
-		else()
-			set(str_fname_shared
-				"${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}"
-			)
-			set(str_fname_import
-				"${CMAKE_IMPORT_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}"
-			)
-			set(str_fname_sonl1
-				"${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
-			)
-		endif()
-		set(str_fname_sonl2 "${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}")
-	else()
-		set(str_fname_shared "${CMAKE_SHARED_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}")
-		set(str_fname_import "${CMAKE_IMPORT_LIBRARY_PREFIX}${str_oname_shared}${${var_postfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}")
-	endif()
-
-	# === General Settings ===
-
-	unset(lst_general_defines)
-	unset(lst_general_cflags)
-	unset(lst_general_ldflags)
-	unset(lst_general_libs)
-
-	set(opt_has_safe_flags OFF)
-	unset(lst_safe_cflags)
-	unset(lst_safe_ldflags)
-
-	set(opt_has_unsafe_flags OFF)
-	unset(lst_unsafe_cflags)
-	unset(lst_unsafe_ldflags)
-
-	set(opt_build_ndebug ON)
-	if(NX_TARGET_BUILD_DEBUG)
-		set(opt_build_ndebug OFF)
-	endif()
-
-	set(opt_try_cflags ON)
-	set(opt_try_ldflags ON)
-	if(NOT DEFINED str_tname_executable
-		AND NOT DEFINED str_tname_module
-		AND NOT DEFINED str_tname_shared
-		AND NOT DEFINED str_tname_static
-		AND NOT DEFINED str_tname_objects)
-		set(opt_try_cflags OFF)
-	endif()
-	if(NX_TARGET_PLATFORM_MSDOS)
-		if(NOT DEFINED str_tname_executable)
-			set(opt_try_ldflags OFF)
-		endif()
-	else()
-		if(NOT DEFINED str_tname_executable
-			AND NOT DEFINED str_tname_module
-			AND NOT DEFINED str_tname_shared)
-			set(opt_try_ldflags OFF)
-		endif()
-	endif()
-
-	set(opt_format_mach OFF)
-	set(opt_format_pe OFF)
-	set(opt_format_coff OFF)
-	set(opt_format_elf OFF)
-
-	if(NX_TARGET_PLATFORM_DARWIN)
-		set(opt_format_mach ON)
-	elseif(NX_TARGET_PLATFORM_MSDOS)
-		set(opt_format_coff ON)
-	elseif(NX_TARGET_PLATFORM_WINDOWS OR NX_TARGET_PLATFORM_CYGWIN)
-		set(opt_format_pe ON)
-	else()
-		set(opt_format_elf ON)
-	endif()
-
-	if(NX_HOST_COMPILER_MSVC)
-		list(APPEND lst_general_defines "_CRT_SECURE_NO_WARNINGS")
-	endif()
-
-	set(opt_has_linker OFF)
-	if(opt_try_cflags)
-		if(DEFINED CMAKE_EXE_LINKER_FLAGS)
-			if(CMAKE_EXE_LINKER_FLAGS MATCHES "fuse-ld")
-				set(opt_has_linker ON)
-			endif()
-		endif()
-
-		if(NX_HOST_COMPILER_MSVC)
-			set(opt_has_linker ON)
-		endif()
-
-		if(NOT opt_has_linker)
-			if(opt_format_elf OR opt_format_pe)
-				if(NX_HOST_COMPILER_CLANG)
-					set(lst_try_cflags ${lst_general_cflags})
-					set(lst_try_ldflags ${lst_general_ldflags} "-fuse-ld=lld")
-					nx_check_compiles(HAS_LDFLAG_FUSE_LD_LLD lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_LDFLAG_FUSE_LD_LLD)
-						set(opt_has_linker ON)
-						list(APPEND lst_general_ldflags "-fuse-ld=lld")
-					endif()
-				endif()
-			endif()
-		endif()
-
-		if(NOT opt_has_linker)
-			if(opt_format_elf)
-				if(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
-					set(lst_try_cflags ${lst_general_cflags})
-					set(lst_try_ldflags ${lst_general_ldflags} "-fuse-ld=gold")
-					nx_check_compiles(HAS_LDFLAG_FUSE_LD_GOLD lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_LDFLAG_FUSE_LD_GOLD)
-						set(opt_has_linker ON)
-						list(APPEND lst_general_ldflags "-fuse-ld=gold")
-					endif()
-				endif()
-			endif()
-		endif()
-
-		if(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "-fuse-linker-plugin")
-			nx_check_compiles(HAS_LDFLAG_FUSE_LINKER_PLUGIN lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_FUSE_LINKER_PLUGIN)
-				set(opt_has_linker ON)
-				list(APPEND lst_general_ldflags "-fuse-linker-plugin")
-			endif()
-		endif()
-	endif()
-
-	nx_dependent_option(ENABLE_PEDANTIC_WARNINGS "Enable Various Extra Warnings" ON "opt_try_cflags" OFF)
-	nx_dependent_option(ENABLE_HARDENED_BUILD "Enable Security Hardening" ON "opt_build_ndebug;opt_try_cflags" OFF)
-	nx_dependent_option(ENABLE_LTO_OPTIONS "Enable Link-Time Opimization" ON "opt_build_ndebug;opt_has_linker" OFF)
-
-	if(ENABLE_PEDANTIC_WARNINGS)
-		if(NX_HOST_COMPILER_MSVC)
-			list(APPEND lst_general_cflags "-W4")
-		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
-			list(APPEND lst_general_cflags "-Wall" "-Wextra" "-pedantic")
-		endif()
-	endif()
-
-	if(ENABLE_HARDENED_BUILD)
-		if(NX_HOST_COMPILER_MSVC)
-			set(lst_try_cflags ${lst_general_cflags} "-GS" "-sdl")
-			set(lst_try_ldflags ${lst_general_ldflags})
-			nx_check_compiles(HAS_CFLAG_SDL lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_SDL)
-				list(APPEND lst_general_cflags "-GS" "-sdl")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags} "-guard:cf")
-			set(lst_try_ldflags ${lst_general_ldflags} "-GUARD:CF")
-			nx_check_compiles(HAS_CFLAG_GUARD_CF lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_GUARD_CF)
-				list(APPEND lst_general_cflags "-guard:cf")
-				list(APPEND lst_general_ldflags "-GUARD:CF")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags} "-guard:ehcont")
-			set(lst_try_ldflags ${lst_general_ldflags} "-GUARD:EHCONT")
-			nx_check_compiles(HAS_CFLAG_GUARD_EHCONT lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_GUARD_EHCONT)
-				list(APPEND lst_general_cflags "-guard:ehcont")
-				list(APPEND lst_general_ldflags "-GUARD:EHCONT")
-			endif()
-		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
-			set(lst_try_cflags ${lst_general_cflags} "-Warray-bounds" "-Werror=array-bounds")
-			set(lst_try_ldflags ${lst_general_ldflags})
-			nx_check_compiles(HAS_CFLAG_WARRAY_BOUNDS lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_WARRAY_BOUNDS)
-				list(APPEND lst_general_cflags "-Warray-bounds" "-Werror=array-bounds")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags} "-Wformat=2" "-Wformat-security" "-Werror=format-security")
-			set(lst_try_ldflags ${lst_general_ldflags})
-			nx_check_compiles(HAS_CFLAG_WFORMAT_SECURITY lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_WFORMAT_SECURITY)
-				list(APPEND lst_general_cflags "-Wformat=2" "-Wformat-security" "-Werror=format-security")
-			endif()
-
-			if(NOT NX_TARGET_PLATFORM_MSDOS)
-				set(lst_try_cflags ${lst_general_cflags} "-fcf-protection")
-				set(lst_try_ldflags ${lst_general_ldflags} "-fcf-protection")
-				nx_check_compiles(HAS_CFLAG_FCF_PROTECTION lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_CFLAG_FCF_PROTECTION)
-					list(APPEND lst_general_cflags "-fcf-protection")
-					list(APPEND lst_general_ldflags "-fcf-protection")
-				endif()
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags} "-fstack-clash-protection")
-			set(lst_try_ldflags ${lst_general_ldflags} "-fstack-clash-protection")
-			nx_check_compiles(HAS_CFLAG_FSTACK_CLASH_PROTECTION lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_CFLAG_FSTACK_CLASH_PROTECTION)
-				list(APPEND lst_general_cflags "-fstack-clash-protection")
-				list(APPEND lst_general_ldflags "-fstack-clash-protection")
-			endif()
-
-			# TODO: msys2/clang64 << undefined symbol: __stack_chk_guard >>
-			if(NOT NX_TARGET_PLATFORM_WINDOWS
-				OR NOT NX_HOST_COMPILER_CLANG
-				OR NOT NX_HOST_PLATFORM_WINDOWS
-				OR NOT ENABLE_LTO_OPTIONS)
-				set(lst_try_cflags ${lst_general_cflags} "-fstack-protector-strong")
-				set(lst_try_ldflags ${lst_general_ldflags} "-fstack-protector-strong")
-				nx_check_compiles(HAS_CFLAG_FSTACK_PROTECTOR_STRONG lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
-					list(APPEND lst_general_cflags "-fstack-protector-strong")
-					list(APPEND lst_general_ldflags "-fstack-protector-strong")
-				endif()
-			else()
-				set(HAS_CFLAG_FSTACK_PROTECTOR_STRONG OFF)
-			endif()
-
-			# TODO: msys2/mingw64 << internal compiler error: in seh_emit_stackalloc >>
-			if(NX_TARGET_BUILD_DEBUG)
-				list(APPEND lst_general_defines "_FORTIFY_SOURCE=0")
-			elseif(
-				NX_TARGET_PLATFORM_WINDOWS
-				AND NX_HOST_COMPILER_GNU
-				AND NX_HOST_PLATFORM_WINDOWS
-				AND HAS_CFLAG_FSTACK_CLASH_PROTECTION)
-				list(APPEND lst_general_defines "_FORTIFY_SOURCE=0")
-			else()
-				list(APPEND lst_general_defines "_FORTIFY_SOURCE=2" "_GLIBCXX_ASSERTIONS")
-				if(NOT HAS_CFLAG_FSTACK_PROTECTOR_STRONG)
-					list(APPEND lst_general_libs "ssp")
-				endif()
-			endif()
-
-			if(NX_HOST_COMPILER_CLANG)
-				set(lst_try_cflags ${lst_general_cflags} "-fsanitize=safe-stack")
-				set(lst_try_ldflags ${lst_general_ldflags} "-fsanitize=safe-stack")
-				nx_check_compiles(HAS_CFLAG_FSANITIZE_SAFE_STACK lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_CFLAG_FSANITIZE_SAFE_STACK)
-					list(APPEND lst_general_cflags "-fsanitize=safe-stack")
-					list(APPEND lst_general_ldflags "-fsanitize=safe-stack")
-				endif()
-			endif()
-		endif()
-
-		if(ENABLE_LTO_OPTIONS)
-			if(NX_HOST_COMPILER_MSVC)
-				set(opt_has_unsafe_flags ON)
-				list(APPEND lst_unsafe_cflags "$<$<NOT:$<CONFIG:Debug>>:-GL>")
-				list(APPEND lst_unsafe_ldflags "$<$<NOT:$<CONFIG:Debug>>:-LTCG>" "$<$<CONFIG:RelWithDebInfo>:-INCREMENTAL:NO>")
-			elseif(NX_HOST_COMPILER_CLANG)
-				if(NOT NX_HOST_COMPILER_CLANG_VERSION VERSION_LESS 3.9)
-					set(lst_try_cflags ${lst_general_cflags} ${lst_unsafe_cflags} "-flto=thin")
-					set(lst_try_ldflags ${lst_general_ldflags} ${lst_unsafe_ldflags} "-flto=thin")
-					nx_check_compiles(HAS_CFLAG_FLTO_THIN lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FLTO_THIN)
-						set(opt_has_unsafe_flags ON)
-						list(APPEND lst_unsafe_cflags "-flto=thin")
-						list(APPEND lst_unsafe_ldflags "-flto=thin")
-					endif()
-
-					set(lst_try_cflags ${lst_general_cflags} ${lst_safe_cflags} "-flto=full")
-					set(lst_try_ldflags ${lst_general_ldflags} ${lst_safe_ldflags} "-flto=full")
-					nx_check_compiles(HAS_CFLAG_FLTO_FULL lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FLTO_FULL)
-						set(opt_has_safe_flags ON)
-						list(APPEND lst_safe_cflags "-flto=full")
-						list(APPEND lst_safe_ldflags "-flto=full")
-					endif()
+			if(NOT DEFINED BUILD_MODULE_${sTargetUpper})
+				if(DEFINED BUILD_EXECUTABLE_${sTargetUpper})
+					nx_set_global(BUILD_MODULE_${sTargetUpper} ${BUILD_EXECUTABLE_${sTargetUpper}})
 				else()
-					set(lst_try_cflags ${lst_general_cflags} "-flto")
-					set(lst_try_ldflags ${lst_general_cflags} "-flto")
-					nx_check_compiles(HAS_CFLAG_FLTO lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FLTO)
-						list(APPEND lst_general_cflags "-flto")
-						list(APPEND lst_general_cflags "-flto")
-					endif()
+					nx_set_global(BUILD_MODULE_${sTargetUpper} ON)
 				endif()
-			elseif(NX_HOST_COMPILER_GNU)
-				if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 4.7)
-					set(lst_try_cflags ${lst_general_cflags} ${lst_unsafe_cflags} "-flto" "-fno-fat-lto-objects")
-					set(lst_try_ldflags ${lst_general_ldflags} ${lst_unsafe_ldflags} "-flto" "-fno-fat-lto-objects")
-					nx_check_compiles(HAS_CFLAG_FNO_FAT_LTO_OBJECTS lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FNO_FAT_LTO_OBJECTS)
-						set(opt_has_unsafe_flags ON)
-						list(APPEND lst_unsafe_cflags "-flto" "-fno-fat-lto-objects")
-						list(APPEND lst_unsafe_ldflags "-flto" "-fno-fat-lto-objects")
-					endif()
-
-					set(lst_try_cflags ${lst_general_cflags} ${lst_safe_cflags} "-flto" "-ffat-lto-objects")
-					set(lst_try_ldflags ${lst_general_ldflags} ${lst_safe_ldflags} "-flto" "-ffat-lto-objects")
-					nx_check_compiles(HAS_CFLAG_FFAT_LTO_OBJECTS lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FFAT_LTO_OBJECTS)
-						set(opt_has_safe_flags ON)
-						list(APPEND lst_safe_cflags "-flto" "-ffat-lto-objects")
-						list(APPEND lst_safe_ldflags "-flto" "-ffat-lto-objects")
-					endif()
+			endif()
+			nx_set_global(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		else()
+			if(NOT DEFINED BUILD_EXECUTABLE_${sTargetUpper})
+				nx_set_global(BUILD_EXECUTABLE_${sTargetUpper} ON)
+			endif()
+			nx_set_global(BUILD_MODULE_${sTargetUpper} OFF)
+		endif()
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "DAEMON" OR sArgTYPE MATCHES "EXECUTABLE")
+		if(NOT DEFINED BUILD_EXECUTABLE_${sTargetUpper})
+			nx_set_global(BUILD_EXECUTABLE_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "SHARED_MODULE")
+		if(NOT DEFINED BUILD_MODULE_${sTargetUpper})
+			nx_set_global(BUILD_MODULE_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "MODULE")
+		if(bHasSource)
+			if(NOT DEFINED BUILD_MODULE_${sTargetUpper})
+				nx_set_global(BUILD_MODULE_${sTargetUpper} ON)
+			endif()
+			if(NOT DEFINED BUILD_STATIC_${sTargetUpper})
+				if(DEFINED sArgSTATIC_DEFINE)
+					nx_set_global(BUILD_STATIC_${sTargetUpper} ON)
 				else()
-					set(lst_try_cflags ${lst_general_cflags} "-flto")
-					set(lst_try_ldflags ${lst_general_cflags} "-flto")
-					nx_check_compiles(HAS_CFLAG_FLTO lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_CFLAG_FLTO)
-						list(APPEND lst_general_cflags "-flto")
-						list(APPEND lst_general_cflags "-flto")
-					endif()
+					nx_set_global(BUILD_STATIC_${sTargetUpper} OFF)
 				endif()
 			endif()
+			if(NOT DEFINED BUILD_INTERFACE_${sTargetUpper})
+				nx_set_global(BUILD_INTERFACE_${sTargetUpper} OFF)
+			endif()
+		elseif(DEFINED sArgSTATIC_DEFINE)
+			if(NOT DEFINED BUILD_MODULE_${sTargetUpper})
+				nx_set_global(BUILD_MODULE_${sTargetUpper} OFF)
+			endif()
+			if(NOT DEFINED BUILD_STATIC_${sTargetUpper})
+				nx_set_global(BUILD_STATIC_${sTargetUpper} OFF)
+			endif()
+			if(NOT DEFINED BUILD_INTERFACE_${sTargetUpper})
+				nx_set_global(BUILD_INTERFACE_${sTargetUpper} ON)
+			endif()
 		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "SHARED_LIBRARY")
+		if(NOT DEFINED BUILD_SHARED_${sTargetUpper})
+			nx_set_global(BUILD_SHARED_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "STATIC_LIBRARY")
+		if(NOT DEFINED BUILD_STATIC_${sTargetUpper})
+			nx_set_global(BUILD_STATIC_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "OBJECT_LIBRARY")
+		if(NOT DEFINED BUILD_OBJECTS_${sTargetUpper})
+			nx_set_global(BUILD_OBJECTS_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "INTERFACE_LIBRARY")
+		if(NOT DEFINED BUILD_INTERFACE_${sTargetUpper})
+			nx_set_global(BUILD_INTERFACE_${sTargetUpper} ON)
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "LIBRARY")
+		if(bHasSource)
+			if(NOT DEFINED BUILD_SHARED_${sTargetUpper})
+				if(BUILD_SHARED_LIBS)
+					nx_set_global(BUILD_SHARED_${sTargetUpper} ON)
+				else()
+					nx_set_global(BUILD_SHARED_${sTargetUpper} OFF)
+				endif()
+			endif()
+			if(NOT DEFINED BUILD_STATIC_${sTargetUpper})
+				nx_set_global(BUILD_STATIC_${sTargetUpper} ON)
+			endif()
+			if(NOT DEFINED BUILD_INTERFACE_${sTargetUpper})
+				nx_set_global(BUILD_INTERFACE_${sTargetUpper} OFF)
+			endif()
+		else()
+			if(NOT DEFINED BUILD_SHARED_${sTargetUpper})
+				nx_set_global(BUILD_SHARED_${sTargetUpper} OFF)
+			endif()
+			if(NOT DEFINED BUILD_STATIC_${sTargetUpper})
+				nx_set_global(BUILD_STATIC_${sTargetUpper} OFF)
+			endif()
+			if(NOT DEFINED BUILD_INTERFACE_${sTargetUpper})
+				nx_set_global(BUILD_INTERFACE_${sTargetUpper} ON)
+			endif()
+		endif()
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+	elseif(sArgTYPE STREQUAL "INVALID")
+		message(NOTICE "nx_target: Skipping Target '${sTargetName}'")
+		nx_set(BUILD_EXECUTABLE_${sTargetUpper} OFF)
+		nx_set(BUILD_MODULE_${sTargetUpper} OFF)
+		nx_set(BUILD_SHARED_${sTargetUpper} OFF)
+		nx_set(BUILD_STATIC_${sTargetUpper} OFF)
+		nx_set(BUILD_OBJECTS_${sTargetUpper} OFF)
+		nx_set(BUILD_INTERFACE_${sTargetUpper} OFF)
+	else()
+		message(AUTHOR_WARNING "nx_target: Target Type '${sArgTYPE}' Unknown")
 	endif()
 
-	if(opt_try_ldflags)
-		if(NX_HOST_COMPILER_MSVC)
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "-CETCOMPAT")
-			nx_check_compiles(HAS_LDFLAG_CETCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_CETCOMPAT)
-				list(APPEND lst_general_ldflags "-CETCOMPAT")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "-DYNAMICBASE")
-			nx_check_compiles(HAS_LDFLAG_DYNAMICBASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_DYNAMICBASE)
-				list(APPEND lst_general_ldflags "-DYNAMICBASE")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "-NXCOMPAT")
-			nx_check_compiles(HAS_LDFLAG_CETCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_CETCOMPAT)
-				list(APPEND lst_general_ldflags "-NXCOMPAT")
-			endif()
-
-			if(NX_TARGET_ARCHITECTURE_AMD64)
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "-HIGHENTROPYVA")
-				nx_check_compiles(HAS_LDFLAG_HIGHENTROPYVA lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_HIGHENTROPYVA)
-					list(APPEND lst_general_ldflags "-HIGHENTROPYVA")
-				endif()
-			elseif(NX_TARGET_ARCHITECTURE_IA32)
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "-SAFESEH")
-				nx_check_compiles(HAS_LDFLAG_SAFESEH lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_SAFESEH)
-					list(APPEND lst_general_ldflags "-SAFESEH")
-				endif()
-			endif()
-		elseif(NX_HOST_COMPILER_CLANG OR NX_HOST_COMPILER_GNU)
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--as-needed")
-			nx_check_compiles(HAS_LDFLAG_AS_NEEDED lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_AS_NEEDED)
-				list(APPEND lst_general_ldflags "LINKER:--as-needed")
-			endif()
-
-			set(lst_try_cflags ${lst_general_cflags})
-			set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--no-undefined")
-			nx_check_compiles(HAS_LDFLAG_NO_UNDEFINED lst_try_cflags lst_try_ldflags ${lst_general_libs})
-			if(HAS_LDFLAG_NO_UNDEFINED)
-				list(APPEND lst_general_ldflags "LINKER:--no-undefined")
-			endif()
-
-			if(opt_format_elf)
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,defs")
-				nx_check_compiles(HAS_LDFLAG_Z_DEFS lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_DEFS)
-					list(APPEND lst_general_ldflags "LINKER:-z,defs")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,noexecstack")
-				nx_check_compiles(HAS_LDFLAG_Z_NOEXECSTACK lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_NOEXECSTACK)
-					list(APPEND lst_general_ldflags "LINKER:-z,noexecstack")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,now")
-				nx_check_compiles(HAS_LDFLAG_Z_NOW lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_NOW)
-					list(APPEND lst_general_ldflags "LINKER:-z,now")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,relro")
-				nx_check_compiles(HAS_LDFLAG_Z_RELRO lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_RELRO)
-					list(APPEND lst_general_ldflags "LINKER:-z,relro")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,separate-code")
-				nx_check_compiles(HAS_LDFLAG_Z_SEPARATE_CODE lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_SEPARATE_CODE)
-					list(APPEND lst_general_ldflags "LINKER:-z,separate-code")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:-z,text")
-				nx_check_compiles(HAS_LDFLAG_Z_TEXT lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_Z_TEXT)
-					list(APPEND lst_general_ldflags "LINKER:-z,text")
-				endif()
-			elseif(opt_format_pe)
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--dynamicbase")
-				nx_check_compiles(HAS_LDFLAG_DYNAMICBASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_DYNAMICBASE)
-					list(APPEND lst_general_ldflags "LINKER:--dynamicbase")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--nxcompat")
-				nx_check_compiles(HAS_LDFLAG_NXCOMPAT lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_NXCOMPAT)
-					list(APPEND lst_general_ldflags "LINKER:--nxcompat")
-				endif()
-
-				set(lst_try_cflags ${lst_general_cflags})
-				set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--disable-auto-image-base")
-				nx_check_compiles(HAS_LDFLAG_DISABLE_AUTO_IMAGE_BASE lst_try_cflags lst_try_ldflags ${lst_general_libs})
-				if(HAS_LDFLAG_DISABLE_AUTO_IMAGE_BASE)
-					list(APPEND lst_general_ldflags "LINKER:--disable-auto-image-base")
-				endif()
-
-				if(NX_TARGET_ARCHITECTURE_AMD64)
-					set(lst_try_cflags ${lst_general_cflags})
-					set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--high-entropy-va")
-					nx_check_compiles(HAS_LDFLAG_HIGH_ENTROPY_VA lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_LDFLAG_HIGH_ENTROPY_VA)
-						list(APPEND lst_general_ldflags "LINKER:--high-entropy-va")
-					endif()
-				elseif(NX_TARGET_ARCHITECTURE_IA32)
-					set(lst_try_cflags ${lst_general_cflags})
-					set(lst_try_ldflags ${lst_general_ldflags} "LINKER:--no-seh")
-					nx_check_compiles(HAS_LDFLAG_NO_SEH lst_try_cflags lst_try_ldflags ${lst_general_libs})
-					if(HAS_LDFLAG_NO_SEH)
-						list(APPEND lst_general_ldflags "LINKER:--no-seh")
-					endif()
-				endif()
-			endif()
+	foreach(sType "EXECUTABLE" "MODULE" "SHARED" "STATIC" "OBJECTS" "INTERFACE")
+		unset(sTarget${sType})
+		if(BUILD_${sType}_${sTargetUpper})
+			set(sTarget${sType} "${sTargetName}")
 		endif()
-	endif()
-
-	if(opt_has_safe_flags AND NOT opt_has_unsafe_flags)
-		set(lst_unsafe_cflags ${lst_safe_cflags})
-		set(lst_unsafe_ldflags ${lst_safe_ldflags})
-	endif()
-
-	if(ENABLE_LTO_OPTIONS AND NOT NX_HOST_COMPILER_MSVC)
-		if(NOT CMAKE_AR MATCHES "gcc-ar|llvm-ar")
-			if(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_AR)
-				nx_set(CMAKE_AR "${CMAKE_CXX_COMPILER_AR}")
-			elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_AR)
-				nx_set(CMAKE_AR "${CMAKE_C_COMPILER_AR}")
-			endif()
-		endif()
-		if(NOT CMAKE_RANLIB MATCHES "gcc-ranlib|llvm-ranlib")
-			if(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_RANLIB)
-				nx_set(CMAKE_RANLIB "${CMAKE_CXX_COMPILER_RANLIB}")
-			elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_RANLIB)
-				nx_set(CMAKE_RANLIB "${CMAKE_C_COMPILER_RANLIB}")
-			endif()
-		endif()
-
-		if(CMAKE_AR MATCHES "gcc-ar|llvm-ar")
-			nx_set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
-			nx_set(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> cr <TARGET> <LINK_FLAGS> <OBJECTS>")
-			nx_set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
-			nx_set(CMAKE_CXX_ARCHIVE_APPEND "<CMAKE_AR> r <TARGET> <LINK_FLAGS> <OBJECTS>")
-		endif()
-		if(CMAKE_RANLIB MATCHES "gcc-ranlib|llvm-ranlib")
-			nx_set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
-			nx_set(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> <TARGET>")
-		endif()
-	endif()
+		set(sOutput${sType} "${sArgOUTPUT_NAME}")
+	endforeach()
 
 	# === Parse LIBDEPS ===
 
-	foreach(tmp_visibility "private" "public" "interface")
-		unset(arg_target_libdeps_${tmp_visibility}_shared)
-		unset(arg_target_libdeps_${tmp_visibility}_static)
-		unset(arg_target_libdeps_${tmp_visibility}_source)
+	foreach(sVisibility "PRIVATE" "PUBLIC" "INTERFACE")
+		unset(lsLibDeps${sVisibility}_SHARED)
+		unset(lsLibDeps${sVisibility}_STATIC)
+		unset(lsLibDeps${sVisibility}_INTERFACE)
 
-		foreach(tmp_libvar ${arg_target_libdeps_${tmp_visibility}})
-			unset(str_chosen_shared)
-			unset(str_chosen_static)
-			unset(str_chosen_source)
+		foreach(vLibrary ${lsArg${sVisibility}_LIBDEPS})
+			unset(sLibShared)
+			unset(sLibStatic)
+			unset(sLibInterface)
 
-			if(TARGET ${tmp_libvar})
-				get_target_property(tmp_libdep_type ${tmp_libvar} TYPE)
-				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
-					set(str_chosen_shared "${tmp_libvar}")
-				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
+			if(TARGET ${vLibrary})
+				get_target_property(sType ${vLibrary} TYPE)
+				if(sType STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
+					set(sLibShared "${vLibrary}")
+				elseif(sType STREQUAL "STATIC_LIBRARY")
 					if(NX_TARGET_PLATFORM_MSDOS)
-						set(str_chosen_shared "${tmp_libvar}")
+						set(sLibShared "${vLibrary}")
 					endif()
-					set(str_chosen_static "${tmp_libvar}")
-				elseif(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
-					set(str_chosen_source "${tmp_libvar}")
+					set(sLibStatic "${vLibrary}")
+				elseif(sType STREQUAL "INTERFACE_LIBRARY")
+					set(sLibInterface "${vLibrary}")
 				endif()
 			else()
-				foreach(tmp_libdep ${${tmp_libvar}})
-					if(TARGET ${tmp_libdep})
-						get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
-						if(tmp_libdep_type STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
-							set(str_chosen_shared "${tmp_libdep}")
-						elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
-							set(str_chosen_static "${tmp_libdep}")
-						elseif(tmp_libdep_type STREQUAL "INTERFACE_LIBRARY")
-							set(str_chosen_source "${tmp_libdep}")
+				foreach(sLibrary ${${vLibrary}})
+					if(TARGET ${sLibrary})
+						get_target_property(sType ${sLibrary} TYPE)
+						if(sType STREQUAL "SHARED_LIBRARY" AND NOT NX_TARGET_PLATFORM_MSDOS)
+							set(sLibShared "${sLibrary}")
+						elseif(sType STREQUAL "STATIC_LIBRARY")
+							set(sLibStatic "${sLibrary}")
+						elseif(sType STREQUAL "INTERFACE_LIBRARY")
+							set(sLibInterface "${sLibrary}")
 						endif()
 					endif()
 				endforeach()
 
-				if(NOT DEFINED str_chosen_shared)
-					if(DEFINED str_chosen_static)
-						set(str_chosen_shared "${str_chosen_static}")
-					elseif(DEFINED str_chosen_source)
-						set(str_chosen_shared "${str_chosen_source}")
+				if(NOT DEFINED sLibShared)
+					if(DEFINED sLibStatic)
+						set(sLibShared "${sLibStatic}")
+					elseif(DEFINED sLibInterface)
+						set(sLibShared "${sLibInterface}")
 					endif()
 				endif()
 
-				if(NOT DEFINED str_chosen_static)
-					if(DEFINED str_chosen_source)
-						set(str_chosen_static "${str_chosen_source}")
+				if(NOT DEFINED sLibStatic)
+					if(DEFINED sLibInterface)
+						set(sLibStatic "${sLibInterface}")
 					endif()
 				endif()
 			endif()
 
-			list(APPEND arg_target_libdeps_${tmp_visibility}_shared ${str_chosen_shared})
-			list(APPEND arg_target_libdeps_${tmp_visibility}_static ${str_chosen_static})
-			list(APPEND arg_target_libdeps_${tmp_visibility}_source ${str_chosen_source})
+			list(APPEND lsLibDeps${sVisibility}_SHARED ${sLibShared})
+			list(APPEND lsLibDeps${sVisibility}_STATIC ${sLibStatic})
+			list(APPEND lsLibDeps${sVisibility}_INTERFACE ${sLibInterface})
 		endforeach()
 	endforeach()
 
+	# === Target Naming ===
+
+	set(bFormatMachO OFF)
+	set(bFormatWinPE OFF)
+	set(bFormatDJCOFF OFF)
+	set(bFormatELF OFF)
+
+	if(NX_TARGET_PLATFORM_DARWIN)
+		set(bFormatMachO ON)
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		set(bFormatDJCOFF ON)
+	elseif(NX_TARGET_PLATFORM_WINDOWS OR NX_TARGET_PLATFORM_CYGWIN)
+		set(bFormatWinPE ON)
+	else()
+		set(bFormatELF ON)
+	endif()
+
+	set(bUseSOVERSION OFF)
+	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT)
+		string(REPLACE "." "-" sVersionABI "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
+		if(bFormatDJCOFF OR bFormatWinPE)
+			set(sOutputSHARED "${sOutputSHARED}${sVersionABI}")
+		else()
+			set(bUseSOVERSION ON)
+		endif()
+		set(sOutputSTATIC "${sOutputSTATIC}${sVersionABI}")
+		set(sOutputOBJECTS "${sOutputOBJECTS}${sVersionABI}")
+	elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT)
+		string(REPLACE "." "-" sVersionAPI "${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
+		set(sOutputSHARED "${sOutputSHARED}-${sVersionAPI}")
+		set(sOutputSTATIC "${sOutputSTATIC}-${sVersionAPI}")
+		set(sOutputOBJECTS "${sOutputOBJECTS}-${sVersionAPI}")
+	endif()
+	if(bFormatDJCOFF OR bFormatWinPE)
+		if("x${CMAKE_STATIC_LIBRARY_SUFFIX}" STREQUAL "x${CMAKE_IMPORT_LIBRARY_SUFFIX}" AND "x${sOutputSHARED}" STREQUAL
+																							"x${sOutputSTATIC}")
+			set(sOutputSTATIC "${sOutputSTATIC}_s")
+		endif()
+	endif()
+	if(NX_HOST_LANGUAGE_CXX AND DEFINED NX_TARGET_CXXABI_STRING)
+		set(sOutputSHARED "${sOutputSHARED}-${NX_TARGET_CXXABI_STRING}")
+		set(sOutputSTATIC "${sOutputSTATIC}-${NX_TARGET_CXXABI_STRING}")
+		set(sOutputOBJECTS "${sOutputOBJECTS}-${NX_TARGET_CXXABI_STRING}")
+	endif()
+	if(NX_TARGET_PLATFORM_MSDOS)
+		if(NOT bArgNO_INSTALL)
+			nx_string_limit(sOutputEXECUTABLE "${sOutputEXECUTABLE}" 8)
+			nx_string_limit(sOutputMODULE "${sOutputMODULE}" 8)
+			nx_string_limit(sOutputSHARED "${sOutputSHARED}" 8)
+		endif()
+		string(TOUPPER "${sOutputEXECUTABLE}" sOutputEXECUTABLE)
+		string(TOUPPER "${sOutputMODULE}" sOutputMODULE)
+		string(TOUPPER "${sOutputSHARED}" sOutputSHARED)
+		string(TOUPPER "${sOutputSTATIC}" sOutputSTATIC)
+		string(TOUPPER "${sOutputOBJECTS}" sOutputOBJECTS)
+	elseif(NX_TARGET_PLATFORM_POSIX AND NOT NX_TARGET_PLATFORM_HAIKU)
+		string(TOLOWER "${sOutputEXECUTABLE}" sOutputEXECUTABLE)
+		string(TOLOWER "${sOutputMODULE}" sOutputMODULE)
+		string(TOLOWER "${sOutputSHARED}" sOutputSHARED)
+		string(TOLOWER "${sOutputSTATIC}" sOutputSTATIC)
+		string(TOLOWER "${sOutputOBJECTS}" sOutputOBJECTS)
+	endif()
+	if(DEFINED sTargetOBJECTS)
+		set(sTargetOBJECTS "${sOutputOBJECTS}")
+	endif()
+
+	# === Determine Filenames ===
+
+	string(TOUPPER "CMAKE_${CMAKE_BUILD_TYPE}_POSTFIX" vBuildPostfix)
+
+	set(sFileEXECUTABLE "${CMAKE_EXECUTABLE_PREFIX}${sOutputEXECUTABLE}${${vBuildPostfix}}${CMAKE_EXECUTABLE_SUFFIX}")
+	set(sFileMODULE "${CMAKE_SHARED_MODULE_PREFIX}${sOutputMODULE}${${vBuildPostfix}}${CMAKE_SHARED_MODULE_SUFFIX}")
+	set(sFileSTATIC "${CMAKE_STATIC_LIBRARY_PREFIX}${sOutputSTATIC}${${vBuildPostfix}}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+
+	if(bUseSOVERSION)
+		if(bFormatMachO)
+			set(sFileSHARED
+				"${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}"
+			)
+			set(sFileIMPORT
+				"${CMAKE_IMPORT_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}${CMAKE_IMPORT_LIBRARY_SUFFIX}"
+			)
+			set(sFileSONAME1
+				"${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}${CMAKE_SHARED_LIBRARY_SUFFIX}"
+			)
+		else()
+			set(sFileSHARED
+				"${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}"
+			)
+			set(sFileIMPORT
+				"${CMAKE_IMPORT_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION}"
+			)
+			set(sFileSONAME1
+				"${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
+			)
+		endif()
+		set(sFileSONAME2 "${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+	else()
+		set(sFileSHARED "${CMAKE_SHARED_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+		set(sFileIMPORT "${CMAKE_IMPORT_LIBRARY_PREFIX}${sOutputSHARED}${${vBuildPostfix}}${CMAKE_IMPORT_LIBRARY_SUFFIX}")
+		unset(sFileSONAME1)
+		unset(sFileSONAME2)
+	endif()
+
+	# === Default Flags ===
+
+	list(
+		APPEND
+		lsArgINTERNAL_DEFINES
+		${NX_DEFAULT_DEFINES_GENERAL}
+		${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES}
+		${${NX_PROJECT_NAME}_BUILD_DEFINES}
+		${${NX_PROJECT_NAME}_COMPILER_DEFINES}
+		${${NX_PROJECT_NAME}_PLATFORM_DEFINES})
+	list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_CFLAGS_DIAGNOSTIC})
+
+	if(NOT bGoodSanitizers)
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_LDFLAGS_EXTRA})
+	endif()
+
+	if(NOT bArgNO_SECURE)
+		list(APPEND lsArgINTERNAL_DEFINES ${NX_DEFAULT_DEFINES_HARDEN})
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_CFLAGS_HARDEN})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_LDFLAGS_HARDEN})
+	endif()
+
+	if(bArgUSE_ASAN)
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_ADDRESS})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_ADDRESS})
+	endif()
+	if(bArgUSE_MSAN)
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_MEMORY})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_MEMORY})
+	endif()
+	if(bArgUSE_TSAN)
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_THREAD})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_THREAD})
+	endif()
+	if(bArgUSE_UBSAN)
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_UNDEFINED})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_UNDEFINED})
+	endif()
+
+	unset(lsFullLTO_CFLAGS)
+	unset(lsFullLTO_LDFLAGS)
+	unset(lsThinLTO_CFLAGS)
+	unset(lsThinLTO_LDFLAGS)
+	if(NOT bArgNO_LTO)
+		if(bArgNO_INSTALL
+			OR NOT DEFINED NX_INSTALL_SYSTEM
+			OR NOT NX_INSTALL_SYSTEM)
+			set(lsFullLTO_CFLAGS ${NX_DEFAULT_CFLAGS_LTO_THIN})
+			set(lsFullLTO_LDFLAGS ${NX_DEFAULT_LDFLAGS_LTO_THIN})
+		else()
+			set(lsFullLTO_CFLAGS ${NX_DEFAULT_CFLAGS_LTO_FULL})
+			set(lsFullLTO_LDFLAGS ${NX_DEFAULT_LDFLAGS_LTO_FULL})
+		endif()
+		set(lsThinLTO_CFLAGS ${NX_DEFAULT_CFLAGS_LTO_THIN})
+		set(lsThinLTO_LDFLAGS ${NX_DEFAULT_LDFLAGS_LTO_THIN})
+
+		if(NOT bArgNO_SECURE AND NOT bGoodSanitizers)
+			list(APPEND lsThinLTO_CFLAGS ${NX_DEFAULT_SANITIZER_CFI})
+			list(APPEND lsThinLTO_LDFLAGS ${NX_DEFAULT_SANITIZER_CFI})
+			list(APPEND lsFullLTO_CFLAGS ${NX_DEFAULT_SANITIZER_CFI})
+			list(APPEND lsFullLTO_LDFLAGS ${NX_DEFAULT_SANITIZER_CFI})
+		endif()
+	endif()
+
+	if(NOT bArgNO_SECURE AND NOT bGoodSanitizers)
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK} ${NX_DEFAULT_SANITIZER_MINIMAL})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK} ${NX_DEFAULT_SANITIZER_MINIMAL})
+	endif()
+
+	# === General Settings ===
+
+	# TODO: msys2/clang64 << undefined symbol: __stack_chk_guard >> TODO: msys2/mingw64 << internal compiler error: in seh_emit_stackalloc
+	# >>
+
 	# === Build Executable ===
 
-	if(DEFINED str_tname_executable)
-		while(TARGET "${str_tname_executable}")
-			set(str_tname_executable "${str_tname_executable}_bin")
+	list(APPEND lsArgINTERNAL_DEFINES ${lsArgPRIVATE_DEFINES})
+	list(APPEND lsArgINTERNAL_CFLAGS ${lsArgPRIVATE_CFLAGS})
+	list(APPEND lsArgINTERNAL_CXXFLAGS ${lsArgPRIVATE_CXXFLAGS})
+	list(APPEND lsArgINTERNAL_LDFLAGS ${lsArgPRIVATE_LDFLAGS})
+
+	if(DEFINED sTargetEXECUTABLE)
+		while(TARGET "${sTargetEXECUTABLE}")
+			set(sTargetEXECUTABLE "${sTargetEXECUTABLE}_bin")
 		endwhile()
-		if(str_target_type STREQUAL "TEST")
-			nx_append(${NX_PROJECT_NAME}_TARGETS_TESTS "${str_tname_executable}")
-		else()
-			nx_append(${NX_PROJECT_NAME}_TARGETS_EXECUTABLE "${str_tname_executable}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_EXECUTABLE "${sTargetEXECUTABLE}")
 		endif()
-		nx_append(${var_target_list} "${str_tname_executable}")
+		nx_append(${vTargetList} "${sTargetEXECUTABLE}")
 
-		if(NX_TARGET_PLATFORM_WINDOWS AND str_target_type STREQUAL "APPLICATION")
-			# list(APPEND arg_target_defines_private "_UNICODE" "UNICODE")
-			list(APPEND arg_target_defines_private "_UNICODE")
-		endif()
-
-		add_executable("${str_tname_executable}")
-		set_target_properties("${str_tname_executable}" PROPERTIES OUTPUT_NAME "${str_oname_executable}")
+		add_executable("${sTargetEXECUTABLE}")
+		set_target_properties("${sTargetEXECUTABLE}" PROPERTIES OUTPUT_NAME "${sOutputEXECUTABLE}")
 		nx_target_compile_definitions(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
-			PUBLIC ${arg_target_defines_public}
-			INTERFACE ${arg_target_defines_interface})
+			"${sTargetEXECUTABLE}"
+			PRIVATE ${lsArgINTERNAL_DEFINES}
+			PUBLIC ${lsArgPUBLIC_DEFINES}
+			INTERFACE ${lsArgINTERFACE_DEFINES})
 		nx_target_compile_features(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_features_private}
-			PUBLIC ${arg_target_features_public}
-			INTERFACE ${arg_target_features_interface})
+			"${sTargetEXECUTABLE}"
+			PRIVATE ${lsArgPRIVATE_FEATURES}
+			PUBLIC ${lsArgPUBLIC_FEATURES}
+			INTERFACE ${lsArgINTERFACE_FEATURES})
 		nx_target_compile_options(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
-			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
+			"${sTargetEXECUTABLE}"
+			PRIVATE ${lsArgINTERNAL_CFLAGS} ${lsArgINTERNAL_CXXFLAGS} ${lsThinLTO_CFLAGS}
+			PUBLIC ${lsArgPUBLIC_CFLAGS} ${lsArgPUBLIC_CXXFLAGS}
+			INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
 		nx_target_include_directories(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_includes_private}
-			PUBLIC ${arg_target_includes_public}
-			INTERFACE ${arg_target_includes_interface}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetEXECUTABLE}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_INCLUDES}
+			PUBLIC ${lsArgPUBLIC_INCLUDES}
+			INTERFACE ${lsArgINTERFACE_INCLUDES})
 		nx_target_link_libraries(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_depends_private} ${lst_general_libs}
-			PUBLIC ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
+			"${sTargetEXECUTABLE}"
+			PRIVATE ${lsArgPRIVATE_DEPENDS} ${lsLibDepsPRIVATE_SHARED}
+			PUBLIC ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPUBLIC_SHARED}
+			INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_SHARED})
 		nx_target_link_options(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
-			PUBLIC ${arg_target_ldflags_public}
-			INTERFACE ${arg_target_ldflags_interface})
+			"${sTargetEXECUTABLE}"
+			PRIVATE ${lsArgINTERNAL_LDFLAGS} ${lsThinLTO_LDFLAGS}
+			PUBLIC ${lsArgPUBLIC_LDFLAGS}
+			INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		nx_target_sources(
-			"${str_tname_executable}"
-			PRIVATE ${arg_target_sources_private}
-			PUBLIC ${arg_target_sources_public}
-			INTERFACE ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetEXECUTABLE}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_SOURCES}
+			PUBLIC ${lsArgPUBLIC_SOURCES}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP})
 
-		if(str_target_type STREQUAL "APPLICATION")
-			set_target_properties("${str_tname_executable}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_PATH_APPS_RPATH}"
-																		WIN32_EXECUTABLE TRUE)
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
+		if(NX_TARGET_PLATFORM_WINDOWS)
+			if(sArgTYPE STREQUAL "APPLICATION")
+				nx_target_compile_definitions("${sTargetEXECUTABLE}" PRIVATE "_UNICODE" "UNICODE")
+				set_target_properties("${sTargetEXECUTABLE}" PROPERTIES WIN32_EXECUTABLE ON)
+			else()
+				set_target_properties("${sTargetEXECUTABLE}" PROPERTIES WIN32_EXECUTABLE OFF)
+			endif()
+		endif()
+
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
+			if(sArgTYPE STREQUAL "APPLICATION")
+				set_target_properties("${sTargetEXECUTABLE}" PROPERTIES
+										INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_RPATH_APPLICATIONS}")
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_APP ON)
 				install(
-					TARGETS "${str_tname_executable}"
+					TARGETS "${sTargetEXECUTABLE}"
 					COMPONENT ${NX_PROJECT_NAME}_APP
-					DESTINATION "${NX_INSTALL_PATH_APPS}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_APPS}/${str_fname_executable}")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_APPS}")
-			endif()
-		elseif(str_target_type STREQUAL "DAEMON")
-			set_target_properties("${str_tname_executable}"
-									PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_PATH_SERVERS_RPATH}" WIN32_EXECUTABLE FALSE)
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
+					DESTINATION "${NX_INSTALL_PATH_APPLICATIONS}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_APPLICATIONS}/${sFileEXECUTABLE}")
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_APPLICATIONS}")
+			elseif(sArgTYPE STREQUAL "DAEMON")
+				set_target_properties("${sTargetEXECUTABLE}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_RPATH_DAEMONS}")
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_SRV ON)
 				install(
-					TARGETS "${str_tname_executable}"
+					TARGETS "${sTargetEXECUTABLE}"
 					COMPONENT ${NX_PROJECT_NAME}_SRV
-					DESTINATION "${NX_INSTALL_PATH_SERVERS}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_SERVERS}/${str_fname_executable}")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_SERVERS}")
-			endif()
-		elseif(str_target_type STREQUAL "EXECUTABLE")
-			set_target_properties(
-				"${str_tname_executable}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_PATH_BINARIES_RPATH}"
-														WIN32_EXECUTABLE FALSE)
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
+					DESTINATION "${NX_INSTALL_PATH_DAEMONS}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_DAEMONS}/${sFileEXECUTABLE}")
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_DAEMONS}")
+			else()
+				set_target_properties("${sTargetEXECUTABLE}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_RPATH_BINARIES}")
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_BIN ON)
 				install(
-					TARGETS "${str_tname_executable}"
+					TARGETS "${sTargetEXECUTABLE}"
 					COMPONENT ${NX_PROJECT_NAME}_BIN
 					DESTINATION "${NX_INSTALL_PATH_BINARIES}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_BINARIES}/${str_fname_executable}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_BINARIES}/${sFileEXECUTABLE}")
 				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_BINARIES}")
 			endif()
 		endif()
 	endif()
 
-	# === Targetted LTO Handling ===
-
-	set(opt_has_static_libs OFF)
-	if(DEFINED str_tname_static OR DEFINED str_tname_objects)
-		set(opt_has_static_libs ON)
-	endif()
-
-	set(opt_nodist_default ON)
-	if(DEFINED NX_INSTALL_SYSTEM AND NX_INSTALL_SYSTEM)
-		set(opt_nodist_default OFF)
-	endif()
-
-	nx_dependent_option(BUILD_THINLTO_${str_target_upper} "Build LTO '${str_target_name}' Static Library" ${opt_nodist_default}
-						"opt_has_unsafe_flags;opt_has_static_libs" OFF)
-	if(BUILD_THINLTO_${str_target_upper})
-		set(lst_safe_cflags ${lst_unsafe_cflags})
-		set(lst_safe_ldflags ${lst_unsafe_ldflags})
-	endif()
-
-	# NOTE: DXEs are not like other shared libraries
-	if(NX_TARGET_PLATFORM_MSDOS)
-		unset(lst_unsafe_cflags)
-		unset(lst_unsafe_ldflags)
-	endif()
-
-	# === Build DXEFLAGS ===
-
-	unset(arg_target_depends_private_dxe)
-	unset(arg_target_libdeps_private_dxe)
+	# === Create DXEFLAGS ===
 
 	if(NX_TARGET_PLATFORM_MSDOS)
-		foreach(tmp_libdep ${arg_target_depends_private})
-			if(TARGET ${tmp_libdep})
-				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+		unset(lsArgDXELIB_DEPENDS)
+		unset(lsLibDepsDXELIB_SHARED)
 
-				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
-					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
-				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+		foreach(sLibrary ${lsArgPRIVATE_DEPENDS})
+			if(TARGET ${sLibrary})
+				get_target_property(sType ${sLibrary} TYPE)
+
+				if(sType STREQUAL "SHARED_LIBRARY")
+					list(APPEND lsArgDXEFLAGS "-P" "$<TARGET_FILE:${sLibrary}>")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
+				elseif(sType STREQUAL "STATIC_LIBRARY")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
 				endif()
 
-				list(APPEND arg_target_depends_private_dxe ${tmp_libdep})
-				list(REMOVE_ITEM arg_target_depends_private ${tmp_libdep})
+				list(APPEND lsArgDXELIB_DEPENDS "${sLibrary}")
+				list(REMOVE_ITEM lsArgPRIVATE_DEPENDS "${sLibrary}")
 			endif()
 		endforeach()
 
-		foreach(tmp_libdep ${arg_target_libdeps_private_shared})
-			if(TARGET ${tmp_libdep})
-				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+		foreach(sLibrary ${lsLibDepsPRIVATE_SHARED})
+			if(TARGET ${sLibrary})
+				get_target_property(sType ${sLibrary} TYPE)
 
-				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
-					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
-				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				if(sType STREQUAL "SHARED_LIBRARY")
+					list(APPEND lsArgDXEFLAGS "-P" "$<TARGET_FILE:${sLibrary}>")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
+				elseif(sType STREQUAL "STATIC_LIBRARY")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
 				endif()
 
-				list(APPEND arg_target_libdeps_private_dxe ${tmp_libdep})
-				list(REMOVE_ITEM arg_target_libdeps_private_shared ${tmp_libdep})
+				list(APPEND lsLibDepsDXELIB_SHARED "${sLibrary}")
+				list(REMOVE_ITEM lsLibDepsPRIVATE_SHARED "${sLibrary}")
 			endif()
 		endforeach()
 
-		foreach(tmp_libdep ${arg_target_depends_public} ${arg_target_libdeps_public_shared})
-			if(TARGET ${tmp_libdep})
-				get_target_property(tmp_libdep_type ${tmp_libdep} TYPE)
+		foreach(sLibrary ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPUBLIC_SHARED})
+			if(TARGET ${sLibrary})
+				get_target_property(sType ${sLibrary} TYPE)
 
-				if(tmp_libdep_type STREQUAL "SHARED_LIBRARY")
-					list(APPEND arg_target_dxeflags "-P" "$<TARGET_FILE:${tmp_libdep}>")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
-				elseif(tmp_libdep_type STREQUAL "STATIC_LIBRARY")
-					list(APPEND arg_target_dxelibs "$<TARGET_LINKER_FILE:${tmp_libdep}>")
+				if(sType STREQUAL "SHARED_LIBRARY")
+					list(APPEND lsArgDXEFLAGS "-P" "$<TARGET_FILE:${sLibrary}>")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
+				elseif(sType STREQUAL "STATIC_LIBRARY")
+					list(APPEND lsArgDXELIBS "$<TARGET_LINKER_FILE:${sLibrary}>")
 				endif()
 			endif()
 		endforeach()
 	endif()
+
+	# === Adjust Executable Flags ===
+
+	foreach(sFlag ${NX_DEFAULT_SANITIZER_SAFESTACK})
+		if(DEFINED lsArgINTERNAL_CFLAGS)
+			if("${sFlag}" IN_LIST lsArgINTERNAL_CFLAGS)
+				list(REMOVE_ITEM lsArgINTERNAL_CFLAGS "${sFlag}")
+			endif()
+		endif()
+		if(DEFINED lsArgINTERNAL_LDFLAGS)
+			if("${sFlag}" IN_LIST lsArgINTERNAL_LDFLAGS)
+				list(REMOVE_ITEM lsArgINTERNAL_LDFLAGS "${sFlag}")
+			endif()
+		endif()
+	endforeach()
+
+	string(REPLACE "image-base,0x14" "image-base,0x18" lsArgINTERNAL_LDFLAGS "${lsArgINTERNAL_LDFLAGS}")
 
 	# === Build Shared Module ===
 
-	if(DEFINED str_tname_module)
-		while(TARGET "${str_tname_module}")
-			set(str_tname_module "${str_tname_module}_mod")
+	if(DEFINED sTargetMODULE)
+		while(TARGET "${sTargetMODULE}")
+			set(sTargetMODULE "${sTargetMODULE}_mod")
 		endwhile()
-		nx_append(${NX_PROJECT_NAME}_TARGETS_MODULE "${str_tname_module}")
-		nx_append(${var_target_list} "${str_tname_module}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_MODULE "${sTargetMODULE}")
+		endif()
+		nx_append(${vTargetList} "${sTargetMODULE}")
 
-		add_library("${str_tname_module}" MODULE)
-		set_target_properties("${str_tname_module}" PROPERTIES OUTPUT_NAME "${str_oname_module}")
+		add_library("${sTargetMODULE}" MODULE)
+		set_target_properties("${sTargetMODULE}" PROPERTIES OUTPUT_NAME "${sOutputMODULE}")
 		nx_target_compile_definitions(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
-			PUBLIC ${arg_target_defines_public}
-			INTERFACE ${arg_target_defines_interface}
-			DEFINE_SYMBOL ${arg_target_define_symbol})
+			"${sTargetMODULE}"
+			PRIVATE ${lsArgINTERNAL_DEFINES}
+			PUBLIC ${lsArgPUBLIC_DEFINES}
+			INTERFACE ${lsArgINTERFACE_DEFINES}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL})
 		nx_target_compile_features(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_features_private}
-			PUBLIC ${arg_target_features_public}
-			INTERFACE ${arg_target_features_interface})
+			"${sTargetMODULE}"
+			PRIVATE ${lsArgPRIVATE_FEATURES}
+			PUBLIC ${lsArgPUBLIC_FEATURES}
+			INTERFACE ${lsArgINTERFACE_FEATURES})
 		nx_target_compile_options(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
-			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
+			"${sTargetMODULE}"
+			PRIVATE ${lsArgINTERNAL_CFLAGS} ${lsArgINTERNAL_CXXFLAGS} ${lsThinLTO_CFLAGS}
+			PUBLIC ${lsArgPUBLIC_CFLAGS} ${lsArgPUBLIC_CXXFLAGS}
+			INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
 		nx_target_include_directories(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_includes_private}
-			PUBLIC ${arg_target_includes_public}
-			INTERFACE ${arg_target_includes_interface}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetMODULE}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_INCLUDES}
+			PUBLIC ${lsArgPUBLIC_INCLUDES}
+			INTERFACE ${lsArgINTERFACE_INCLUDES})
 		if(NX_TARGET_PLATFORM_MSDOS)
 			nx_target_link_libraries(
-				"${str_tname_module}"
-				PRIVATE ${arg_target_depends_private_dxe} ${arg_target_libdeps_private_dxe}
-				PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_shared}
-						${arg_target_libdeps_public_shared} ${lst_general_libs}
-				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+				"${sTargetMODULE}"
+				PRIVATE ${lsArgDXELIB_DEPENDS} ${lsLibDepsDXELIB_SHARED}
+				PUBLIC ${lsArgPRIVATE_DEPENDS} ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPRIVATE_SHARED} ${lsLibDepsPUBLIC_SHARED}
+						${lst_general_libs}
+				INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_SHARED})
 			nx_target_link_options(
-				"${str_tname_module}"
-				PRIVATE ${arg_target_dxeflags} ${arg_target_dxelibs}
-				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
+				"${sTargetMODULE}"
+				PRIVATE ${lsArgDXEFLAGS} ${lsArgDXELIBS}
+				INTERFACE ${lsArgPUBLIC_LDFLAGS} ${lsArgINTERFACE_LDFLAGS})
 		else()
 			nx_target_link_libraries(
-				"${str_tname_module}"
-				PRIVATE ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs}
-				PUBLIC ${arg_target_depends_public} ${arg_target_libdeps_public_shared}
-				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+				"${sTargetMODULE}"
+				PRIVATE ${lsArgPRIVATE_DEPENDS} ${lsLibDepsPRIVATE_SHARED}
+				PUBLIC ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPUBLIC_SHARED}
+				INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_SHARED})
 			nx_target_link_options(
-				"${str_tname_module}"
-				PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
-				PUBLIC ${arg_target_ldflags_public}
-				INTERFACE ${arg_target_ldflags_interface})
+				"${sTargetMODULE}"
+				PRIVATE ${lsArgINTERNAL_LDFLAGS} ${lsThinLTO_LDFLAGS}
+				PUBLIC ${lsArgPUBLIC_LDFLAGS}
+				INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		endif()
 		nx_target_sources(
-			"${str_tname_module}"
-			PRIVATE ${arg_target_sources_private}
-			PUBLIC ${arg_target_sources_public}
-			INTERFACE ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetMODULE}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_SOURCES}
+			PUBLIC ${lsArgPUBLIC_SOURCES}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP})
 
-		if(str_target_type STREQUAL "APPLICATION")
-			set_target_properties("${str_tname_module}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_PATH_APPS_RPATH}")
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
+			if(sArgTYPE STREQUAL "APPLICATION")
+				set_target_properties("${sTargetMODULE}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_RPATH_APPLICATIONS}")
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_APP ON)
 				install(
-					TARGETS "${str_tname_module}"
+					TARGETS "${sTargetMODULE}"
 					COMPONENT ${NX_PROJECT_NAME}_APP
-					DESTINATION "${NX_INSTALL_PATH_APPS}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_APPS}/${str_fname_module}")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_APPS}")
-			endif()
-		else()
-			set_target_properties("${str_tname_module}" PROPERTIES INSTALL_RPATH
-																	"${CMAKE_INSTALL_RPATH}/${NX_INSTALL_PATHEXT_LIBRARIES_RPATH}")
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
+					DESTINATION "${NX_INSTALL_PATH_APPLICATIONS}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_APPLICATIONS}/${sFileMODULE}")
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_APPLICATIONS}")
+			else()
+				set_target_properties("${sTargetMODULE}" PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_RPATH}/${NX_INSTALL_RPATH_MODULES}")
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_MOD ON)
 				install(
-					TARGETS "${str_tname_module}"
+					TARGETS "${sTargetMODULE}"
 					COMPONENT ${NX_PROJECT_NAME}_MOD
-					DESTINATION "${NX_INSTALL_PATHEXT_LIBRARIES}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHEXT_LIBRARIES}/${str_fname_module}")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHEXT_LIBRARIES}")
+					DESTINATION "${NX_INSTALL_PATH_MODULES}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_MODULES}/${sFileMODULE}")
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_MODULES}")
 			endif()
 		endif()
 	endif()
 
 	# === Build Shared Library ===
 
-	if(DEFINED str_tname_shared)
-		while(TARGET "${str_tname_shared}")
-			set(str_tname_shared "${str_tname_shared}_dll")
+	if(DEFINED sTargetSHARED)
+		while(TARGET "${sTargetSHARED}")
+			set(sTargetSHARED "${sTargetSHARED}_dll")
 		endwhile()
-		nx_append(${NX_PROJECT_NAME}_TARGETS_SHARED "${str_tname_shared}")
-		nx_append(${var_target_list} "${str_tname_shared}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_SHARED "${sTargetSHARED}")
+		endif()
+		nx_append(${vTargetList} "${sTargetSHARED}")
 
-		add_library("${str_tname_shared}" SHARED)
-		set_target_properties("${str_tname_shared}" PROPERTIES OUTPUT_NAME "${str_oname_shared}")
+		add_library("${sTargetSHARED}" SHARED)
+		set_target_properties("${sTargetSHARED}" PROPERTIES OUTPUT_NAME "${sOutputSHARED}")
 		nx_target_compile_definitions(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
-			PUBLIC ${arg_target_defines_public}
-			INTERFACE ${arg_target_defines_interface}
-			DEFINE_SYMBOL ${arg_target_define_symbol})
+			"${sTargetSHARED}"
+			PRIVATE ${lsArgINTERNAL_DEFINES}
+			PUBLIC ${lsArgPUBLIC_DEFINES}
+			INTERFACE ${lsArgINTERFACE_DEFINES}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL})
 		nx_target_compile_features(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_features_private}
-			PUBLIC ${arg_target_features_public}
-			INTERFACE ${arg_target_features_interface})
+			"${sTargetSHARED}"
+			PRIVATE ${lsArgPRIVATE_FEATURES}
+			PUBLIC ${lsArgPUBLIC_FEATURES}
+			INTERFACE ${lsArgINTERFACE_FEATURES})
 		nx_target_compile_options(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_unsafe_cflags}
-			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
+			"${sTargetSHARED}"
+			PRIVATE ${lsArgINTERNAL_CFLAGS} ${lsArgINTERNAL_CXXFLAGS} ${lsThinLTO_CFLAGS}
+			PUBLIC ${lsArgPUBLIC_CFLAGS} ${lsArgPUBLIC_CXXFLAGS}
+			INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
 		nx_target_include_directories(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_includes_private}
-			PUBLIC ${arg_target_includes_public}
-			INTERFACE ${arg_target_includes_interface}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetSHARED}"
+			PRIVATE ${lsArgPRIVATE_INCLUDES}
+			PUBLIC ${lsArgPUBLIC_INCLUDES}
+			INTERFACE ${lsArgINTERFACE_INCLUDES} ${sNO_INSTALL})
 		if(NX_TARGET_PLATFORM_MSDOS)
 			nx_target_link_libraries(
-				"${str_tname_shared}"
-				PRIVATE ${arg_target_depends_private_dxe} ${arg_target_libdeps_private_dxe}
-				PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_shared}
-						${arg_target_libdeps_public_shared} ${lst_general_libs}
-				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+				"${sTargetSHARED}"
+				PRIVATE ${lsArgDXELIB_DEPENDS} ${lsLibDepsDXELIB_SHARED}
+				PUBLIC ${lsArgPRIVATE_DEPENDS} ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPRIVATE_SHARED} ${lsLibDepsPUBLIC_SHARED}
+						${lst_general_libs}
+				INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_SHARED})
 			nx_target_link_options(
-				"${str_tname_shared}"
-				PRIVATE ${arg_target_dxeflags} ${arg_target_dxelibs}
-				INTERFACE ${arg_target_ldflags_public} ${arg_target_ldflags_interface})
+				"${sTargetSHARED}"
+				PRIVATE ${lsArgDXEFLAGS} ${lsArgDXELIBS}
+				INTERFACE ${lsArgPUBLIC_LDFLAGS} ${lsArgINTERFACE_LDFLAGS})
 		else()
 			nx_target_link_libraries(
-				"${str_tname_shared}"
-				PRIVATE ${arg_target_depends_private} ${arg_target_libdeps_private_shared} ${lst_general_libs}
-				PUBLIC ${arg_target_depends_public} ${arg_target_libdeps_public_shared}
-				INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_shared})
+				"${sTargetSHARED}"
+				PRIVATE ${lsArgPRIVATE_DEPENDS} ${lsLibDepsPRIVATE_SHARED}
+				PUBLIC ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPUBLIC_SHARED}
+				INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_SHARED})
 			nx_target_link_options(
-				"${str_tname_shared}"
-				PRIVATE ${arg_target_ldflags_private} ${lst_general_ldflags} ${lst_unsafe_ldflags}
-				PUBLIC ${arg_target_ldflags_public}
-				INTERFACE ${arg_target_ldflags_interface})
+				"${sTargetSHARED}"
+				PRIVATE ${lsArgINTERNAL_LDFLAGS} ${lsThinLTO_LDFLAGS}
+				PUBLIC ${lsArgPUBLIC_LDFLAGS}
+				INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		endif()
 		nx_target_sources(
-			"${str_tname_shared}"
-			PRIVATE ${arg_target_sources_private}
-			PUBLIC ${arg_target_sources_public}
-			INTERFACE ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetSHARED}"
+			PRIVATE ${lsArgPRIVATE_SOURCES}
+			PUBLIC ${lsArgPUBLIC_SOURCES}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP} ${sNO_INSTALL})
 
 		if(NX_TARGET_PLATFORM_MSDOS)
-			if(NX_HOST_LANGUAGE_CXX AND arg_target_sources_private MATCHES ".cc|.cpp|.cxx")
-				nx_target_link_libraries("${str_tname_shared}" INTERFACE "stdc++")
+			if(NX_HOST_LANGUAGE_CXX AND lsArgPRIVATE_SOURCES MATCHES "[.]cc$|[.]cpp$|[.]cxx$|[.]cc;|[.]cpp;|[.]cxx;")
+				nx_target_link_libraries("${sTargetSHARED}" INTERFACE "stdc++")
 			endif()
 		endif()
 		if(NX_TARGET_PLATFORM_MSDOS AND DEFINED CMAKE_DXE3RES)
-			set(str_dxe_export "${CMAKE_CURRENT_BINARY_DIR}/${str_oname_shared}${CMAKE_SHARED_LIBRARY_SUFFIX}.c")
-			set(str_dxe_object "${CMAKE_CURRENT_BINARY_DIR}/${str_oname_shared}${CMAKE_SHARED_LIBRARY_SUFFIX}${CMAKE_C_OUTPUT_EXTENSION}")
-			if(NOT EXISTS "${str_dxe_object}")
-				file(WRITE "${str_dxe_object}" "")
+			set(sDXEResOutput "${CMAKE_CURRENT_BINARY_DIR}/${sOutputSHARED}${CMAKE_SHARED_LIBRARY_SUFFIX}.c")
+			set(sDXEResCompiled "${CMAKE_CURRENT_BINARY_DIR}/${sOutputSHARED}${CMAKE_SHARED_LIBRARY_SUFFIX}.o")
+			if(NOT EXISTS "${sDXEResCompiled}")
+				file(WRITE "${sDXEResCompiled}" "")
 			endif()
 			if(NX_HOST_LANGUAGE_C)
 				add_custom_command(
-					TARGET "${str_tname_shared}"
+					TARGET "${sTargetSHARED}"
 					POST_BUILD
-					COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
-					COMMAND "${CMAKE_C_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
+					COMMENT "[dxe3res] Generating '${sOutputSHARED}${CMAKE_SHARED_LIBRARY_SUFFIX}.o'"
+					COMMAND "${CMAKE_DXE3RES}" -o "${sDXEResOutput}" "$<TARGET_FILE:${sTargetSHARED}>"
+					COMMAND "${CMAKE_C_COMPILER}" -c -O2 -o "${sDXEResCompiled}" "${sDXEResOutput}")
 			elseif(NX_HOST_LANGUAGE_CXX)
 				add_custom_command(
-					TARGET "${str_tname_shared}"
+					TARGET "${sTargetSHARED}"
 					POST_BUILD
-					COMMAND "${CMAKE_DXE3RES}" -o "${str_dxe_export}" "$<TARGET_FILE:${str_tname_shared}>"
-					COMMAND "${CMAKE_CXX_COMPILER}" -c -O2 ${lst_general_cflags} -o "${str_dxe_object}" "${str_dxe_export}")
+					COMMENT "[dxe3res] Generating '${sOutputSHARED}${CMAKE_SHARED_LIBRARY_SUFFIX}.o'"
+					COMMAND "${CMAKE_DXE3RES}" -o "${sDXEResOutput}" "$<TARGET_FILE:${sTargetSHARED}>"
+					COMMAND "${CMAKE_CXX_COMPILER}" -c -O2 -o "${sDXEResCompiled}" "${sDXEResOutput}")
 			endif()
-			nx_target_sources("${str_tname_shared}" INTERFACE "${str_dxe_object}")
+			nx_target_sources("${sTargetSHARED}" INTERFACE "${sDXEResCompiled}")
 		endif()
 
-		if(opt_soversion)
-			set_target_properties("${str_tname_shared}" PROPERTIES SOVERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
-																	VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION}")
+		if(bUseSOVERSION)
+			set_target_properties(
+				"${sTargetSHARED}" PROPERTIES
+				SOVERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
+				VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION}")
 		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION)
-			set_target_properties("${str_tname_shared}" PROPERTIES VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION}")
+			set_target_properties("${sTargetSHARED}" PROPERTIES VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION}")
 		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION)
-			set_target_properties("${str_tname_shared}" PROPERTIES VERSION "${${NX_PROJECT_NAME}_PROJECT_VERSION}")
+			set_target_properties("${sTargetSHARED}" PROPERTIES VERSION "${${NX_PROJECT_NAME}_PROJECT_VERSION}")
 		endif()
 
 		if(NX_TARGET_PLATFORM_DARWIN)
-			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_MACHO_COMPAT)
-				set_target_properties("${str_tname_shared}" PROPERTIES MACHO_COMPATIBILITY_VERSION
-																		"${${NX_PROJECT_NAME}_PROJECT_MACHO_COMPAT}")
+			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_OSX_COMPAT)
+				set_target_properties("${sTargetSHARED}" PROPERTIES MACHO_COMPATIBILITY_VERSION "${${NX_PROJECT_NAME}_PROJECT_OSX_COMPAT}")
 			endif()
-			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_MACHO)
-				set_target_properties("${str_tname_shared}" PROPERTIES MACHO_CURRENT_VERSION "${${NX_PROJECT_NAME}_PROJECT_MACHO}")
+			if(DEFINED ${NX_PROJECT_NAME}_PROJECT_OSX)
+				set_target_properties("${sTargetSHARED}" PROPERTIES MACHO_CURRENT_VERSION "${${NX_PROJECT_NAME}_PROJECT_OSX}")
 			endif()
 		endif()
 
-		if(INSTALL_TARGETS${NX_PROJECT_NAME})
-			if(NX_TARGET_PLATFORM_CYGWIN
-				OR NX_TARGET_PLATFORM_MSDOS
-				OR NX_TARGET_PLATFORM_WINDOWS)
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
+			if(bFormatDJCOFF OR bFormatWinPE)
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_LIB ON)
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_OBJ ON)
 				install(
-					TARGETS "${str_tname_shared}"
+					TARGETS "${sTargetSHARED}"
 					EXPORT "${NX_PROJECT_NAME}"
 					RUNTIME COMPONENT ${NX_PROJECT_NAME}_LIB DESTINATION "${NX_INSTALL_PATH_BINARIES}"
-					ARCHIVE COMPONENT ${NX_PROJECT_NAME}_OBJ DESTINATION "${NX_INSTALL_PATHDEV_LIBRARIES}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_BINARIES}/${str_fname_shared}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHDEV_LIBRARIES}/${str_fname_import}")
+					ARCHIVE COMPONENT ${NX_PROJECT_NAME}_OBJ DESTINATION "${NX_INSTALL_PATH_STATIC}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_BINARIES}/${sFileSHARED}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_STATIC}/${sFileIMPORT}")
 				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_BINARIES}")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHDEV_LIBRARIES}")
-			elseif(opt_soversion)
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_STATIC}")
+			elseif(bUseSOVERSION)
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_LIB ON)
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_OBJ ON)
 				install(
-					TARGETS "${str_tname_shared}"
+					TARGETS "${sTargetSHARED}"
 					EXPORT "${NX_PROJECT_NAME}"
 					LIBRARY COMPONENT ${NX_PROJECT_NAME}_LIB
 							NAMELINK_COMPONENT ${NX_PROJECT_NAME}_OBJ
 							DESTINATION "${NX_INSTALL_PATH_LIBRARIES}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${str_fname_shared}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${str_fname_sonl1}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${str_fname_sonl2}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${sFileSHARED}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${sFileSONAME1}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${sFileSONAME2}")
 				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_LIBRARIES}")
 			else()
 				nx_set(${NX_PROJECT_NAME}_COMPONENT_LIB ON)
 				install(
-					TARGETS "${str_tname_shared}"
+					TARGETS "${sTargetSHARED}"
 					EXPORT "${NX_PROJECT_NAME}"
 					LIBRARY COMPONENT ${NX_PROJECT_NAME}_LIB DESTINATION "${NX_INSTALL_PATH_LIBRARIES}")
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${str_fname_shared}")
+				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES}/${sFileSHARED}")
 				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_LIBRARIES}")
 			endif()
 		endif()
 	endif()
 
-	list(APPEND arg_target_depends_private ${arg_target_depends_private_dxe})
+	# === Destroy DXEFLAGS ===
+
+	if(NX_TARGET_PLATFORM_MSDOS)
+		list(APPEND lsLibDepsPRIVATE_SHARED ${lsLibDepsDXELIB_SHARED})
+		list(APPEND lsArgPRIVATE_DEPENDS ${lsArgDXELIB_DEPENDS})
+	endif()
 
 	# === Build Static Library ===
 
-	if(DEFINED str_tname_static)
-		while(TARGET "${str_tname_static}")
-			set(str_tname_static "${str_tname_static}_lib")
+	list(APPEND lsArgPUBLIC_DEPENDS ${lsArgPRIVATE_DEPENDS})
+	list(APPEND lsArgINTERFACE_LDFLAGS ${lsArgPUBLIC_LDFLAGS} ${lsArgPRIVATE_LDFLAGS})
+
+	list(APPEND lsLibDepsPUBLIC_SHARED ${lsLibDepsPRIVATE_SHARED})
+	list(APPEND lsLibDepsPUBLIC_STATIC ${lsLibDepsPRIVATE_STATIC})
+	list(APPEND lsLibDepsPUBLIC_INTERFACE ${lsLibDepsPRIVATE_INTERFACE})
+
+	if(DEFINED sTargetSTATIC)
+		while(TARGET "${sTargetSTATIC}")
+			set(sTargetSTATIC "${sTargetSTATIC}_lib")
 		endwhile()
-		nx_append(${NX_PROJECT_NAME}_TARGETS_STATIC "${str_tname_static}")
-		nx_append(${var_target_list} "${str_tname_static}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_STATIC "${sTargetSTATIC}")
+		endif()
+		nx_append(${vTargetList} "${sTargetSTATIC}")
 
-		add_library("${str_tname_static}" STATIC)
-		set_target_properties("${str_tname_static}" PROPERTIES OUTPUT_NAME "${str_oname_static}")
+		add_library("${sTargetSTATIC}" STATIC)
+		set_target_properties("${sTargetSTATIC}" PROPERTIES OUTPUT_NAME "${sOutputSTATIC}")
 		nx_target_compile_definitions(
-			"${str_tname_static}"
-			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
-			PUBLIC ${arg_target_defines_public}
-			INTERFACE ${arg_target_defines_interface}
-			DEFINE_SYMBOL ${arg_target_define_symbol}
-			STATIC_DEFINE ${arg_target_static_define})
+			"${sTargetSTATIC}"
+			PRIVATE ${lsArgINTERNAL_DEFINES}
+			PUBLIC ${lsArgPUBLIC_DEFINES}
+			INTERFACE ${lsArgINTERFACE_DEFINES}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL}
+			STATIC_DEFINE ${sArgSTATIC_DEFINE})
 		nx_target_compile_features(
-			"${str_tname_static}"
-			PRIVATE ${arg_target_features_private}
-			PUBLIC ${arg_target_features_public}
-			INTERFACE ${arg_target_features_interface})
+			"${sTargetSTATIC}"
+			PRIVATE ${lsArgPRIVATE_FEATURES}
+			PUBLIC ${lsArgPUBLIC_FEATURES}
+			INTERFACE ${lsArgINTERFACE_FEATURES})
 		nx_target_compile_options(
-			"${str_tname_static}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_safe_cflags}
-			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
+			"${sTargetSTATIC}"
+			PRIVATE ${lsArgINTERNAL_CFLAGS} ${lsArgINTERNAL_CXXFLAGS} ${lsFullLTO_CFLAGS}
+			PUBLIC ${lsArgPUBLIC_CFLAGS} ${lsArgPUBLIC_CXXFLAGS}
+			INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
 		nx_target_include_directories(
-			"${str_tname_static}"
-			PRIVATE ${arg_target_includes_private}
-			PUBLIC ${arg_target_includes_public}
-			INTERFACE ${arg_target_includes_interface}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetSTATIC}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_INCLUDES}
+			PUBLIC ${lsArgPUBLIC_INCLUDES}
+			INTERFACE ${lsArgINTERFACE_INCLUDES})
 		nx_target_link_libraries(
-			"${str_tname_static}"
-			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_libdeps_private_static}
-					${arg_target_libdeps_public_static}
-			INTERFACE ${arg_target_depends_interface} ${arg_target_libdeps_interface_static})
-		nx_target_link_options("${str_tname_static}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
-																${arg_target_ldflags_interface})
+			"${sTargetSTATIC}"
+			PUBLIC ${lsArgPUBLIC_DEPENDS} ${lsLibDepsPUBLIC_STATIC}
+			INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_STATIC})
+		nx_target_link_options(
+			"${sTargetSTATIC}"
+			STATIC ${lsArgSTATIC_LDFLAGS}
+			INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		nx_target_sources(
-			"${str_tname_static}"
-			PRIVATE ${arg_target_sources_private}
-			PUBLIC ${arg_target_sources_public}
-			INTERFACE ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetSTATIC}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_SOURCES}
+			PUBLIC ${lsArgPUBLIC_SOURCES}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP})
 
-		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND opt_exportable)
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
 			nx_set(${NX_PROJECT_NAME}_COMPONENT_OBJ ON)
 			install(
-				TARGETS "${str_tname_static}"
+				TARGETS "${sTargetSTATIC}"
 				EXPORT "${NX_PROJECT_NAME}"
 				COMPONENT ${NX_PROJECT_NAME}_OBJ
-				DESTINATION "${NX_INSTALL_PATHDEV_LIBRARIES}")
-			nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHDEV_LIBRARIES}/${str_fname_static}")
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHDEV_LIBRARIES}")
+				DESTINATION "${NX_INSTALL_PATH_STATIC}")
+			nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_STATIC}/${sFileSTATIC}")
+			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_STATIC}")
 		endif()
 	endif()
 
 	# === Build Object Library ===
 
-	if(DEFINED str_tname_objects)
-		while(TARGET "${str_tname_objects}")
-			set(str_tname_objects "${str_tname_objects}_obj")
+	if(DEFINED sTargetOBJECTS)
+		while(TARGET "${sTargetOBJECTS}")
+			set(sTargetOBJECTS "${sTargetOBJECTS}_obj")
 		endwhile()
-		nx_append(${NX_PROJECT_NAME}_TARGETS_OBJECTS "${str_tname_objects}")
-		nx_append(${var_target_list} "${str_tname_objects}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_OBJECTS "${sTargetOBJECTS}")
+		endif()
+		nx_append(${vTargetList} "${sTargetOBJECTS}")
 
-		add_library("${str_tname_objects}" OBJECT)
-		set_target_properties("${str_tname_objects}" PROPERTIES OUTPUT_NAME "${str_oname_objects}")
+		add_library("${sTargetOBJECTS}" OBJECT)
+		set_target_properties("${sTargetOBJECTS}" PROPERTIES OUTPUT_NAME "${sOutputOBJECTS}")
 		nx_target_compile_definitions(
-			"${str_tname_objects}"
-			PRIVATE ${arg_target_defines_private} ${${NX_PROJECT_NAME}_ARCHITECTURE_DEFINES} ${${NX_PROJECT_NAME}_BUILD_DEFINES}
-					${${NX_PROJECT_NAME}_COMPILER_DEFINES} ${${NX_PROJECT_NAME}_PLATFORM_DEFINES} ${lst_general_defines}
-			PUBLIC ${arg_target_defines_public}
-			INTERFACE ${arg_target_defines_interface}
-			DEFINE_SYMBOL ${arg_target_define_symbol}
-			STATIC_DEFINE ${arg_target_static_define})
+			"${sTargetOBJECTS}"
+			PRIVATE ${lsArgiNTERNAL_DEFINES}
+			PUBLIC ${lsArgPUBLIC_DEFINES}
+			INTERFACE ${lsArgINTERFACE_DEFINES}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL}
+			STATIC_DEFINE ${sArgSTATIC_DEFINE})
 		nx_target_compile_features(
-			"${str_tname_objects}"
-			PRIVATE ${arg_target_features_private}
-			PUBLIC ${arg_target_features_public}
-			INTERFACE ${arg_target_features_interface})
+			"${sTargetOBJECTS}"
+			PRIVATE ${lsArgPRIVATE_FEATURES}
+			PUBLIC ${lsArgPUBLIC_FEATURES}
+			INTERFACE ${lsArgINTERFACE_FEATURES})
 		nx_target_compile_options(
-			"${str_tname_objects}"
-			PRIVATE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${lst_general_cflags} ${lst_safe_cflags}
-			PUBLIC ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-			INTERFACE ${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
+			"${sTargetOBJECTS}"
+			PRIVATE ${lsArgINTERNAL_CFLAGS} ${lsArgINTERNAL_CXXFLAGS} ${lsFullLTO_CFLAGS}
+			PUBLIC ${lsArgPUBLIC_CFLAGS} ${lsArgPUBLIC_CXXFLAGS}
+			INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
 		nx_target_include_directories(
-			"${str_tname_objects}"
-			PRIVATE ${arg_target_includes_private}
-			PUBLIC ${arg_target_includes_public}
-			INTERFACE ${arg_target_includes_interface}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetOBJECTS}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_INCLUDES}
+			PUBLIC ${lsArgPUBLIC_INCLUDES}
+			INTERFACE ${lsArgINTERFACE_INCLUDES})
 		nx_target_link_libraries(
-			"${str_tname_objects}"
-			PUBLIC ${arg_target_depends_private} ${arg_target_depends_public}
-			INTERFACE ${arg_target_depends_interface})
-		nx_target_link_options("${str_tname_objects}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
-																${arg_target_ldflags_interface})
+			"${sTargetOBJECTS}"
+			PUBLIC ${lsArgPUBLIC_DEPENDS}
+			INTERFACE ${lsArgINTERFACE_DEPENDS})
+		nx_target_link_options("${sTargetOBJECTS}" INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		nx_target_sources(
-			"${str_tname_objects}"
-			PRIVATE ${arg_target_sources_private}
-			PUBLIC ${arg_target_sources_public}
-			INTERFACE ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${arg_target_exportable})
+			"${sTargetOBJECTS}" ${sNO_INSTALL}
+			PRIVATE ${lsArgPRIVATE_SOURCES}
+			PUBLIC ${lsArgPUBLIC_SOURCES}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP})
 
-		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND opt_exportable)
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
 			nx_set(${NX_PROJECT_NAME}_COMPONENT_OBJ ON)
 			install(
-				TARGETS "${str_tname_objects}"
+				TARGETS "${sTargetOBJECTS}"
 				EXPORT "${NX_PROJECT_NAME}"
 				COMPONENT ${NX_PROJECT_NAME}_OBJ
-				DESTINATION "${NX_INSTALL_PATHDEV_LIBRARIES}")
-			nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATHDEV_LIBRARIES}/objects-${CMAKE_BUILD_TYPE}/${str_tname_objects}")
+				DESTINATION "${NX_INSTALL_PATH_STATIC}")
+			nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATH_STATIC}/objects-${CMAKE_BUILD_TYPE}/${sTargetOBJECTS}")
 		endif()
 	endif()
 
 	# === Configure Interface Library ===
 
-	if(DEFINED str_tname_interface)
-		while(TARGET "${str_tname_interface}")
-			set(str_tname_interface "${str_tname_interface}_src")
+	list(APPEND lsArgINTERFACE_DEFINES ${lsArgPUBLIC_DEFINES} ${lsArgPRIVATE_DEFINES})
+	list(APPEND lsArgINTERFACE_FEATURES ${lsArgPUBLIC_FEATURES} ${lsArgPRIVATE_FEATURES})
+	list(APPEND lsArgINTERFACE_CFLAGS ${lsArgPUBLIC_CFLAGS} ${lsArgPRIVATE_CFLAGS})
+	list(APPEND lsArgINTERFACE_CXXFLAGS ${lsArgPUBLIC_CXXFLAGS} ${lsArgPRIVATE_CXXFLAGS})
+	list(APPEND lsArgINTERFACE_INCLUDES ${lsArgPUBLIC_INCLUDES} ${lsArgPRIVATE_INCLUDES})
+	list(APPEND lsArgINTERFACE_DEPENDS ${lsArgPUBLIC_DEPENDS})
+	list(APPEND lsArgINTERFACE_SOURCES ${lsArgPUBLIC_SOURCES} ${lsArgPRIVATE_SOURCES})
+
+	list(APPEND lsLibDepsINTERFACE_SHARED ${lsLibDepsPUBLIC_SHARED})
+	list(APPEND lsLibDepsINTERFACE_STATIC ${lsLibDepsPUBLIC_STATIC})
+	list(APPEND lsLibDepsINTERFACE_INTERFACE ${lsLibDepsPUBLIC_INTERFACE})
+
+	if(DEFINED sTargetINTERFACE)
+		while(TARGET "${sTargetINTERFACE}")
+			set(sTargetINTERFACE "${sTargetINTERFACE}_src")
 		endwhile()
-		nx_append(${NX_PROJECT_NAME}_TARGETS_INTERFACE "${str_tname_interface}")
-		nx_append(${var_target_list} "${str_tname_interface}")
+		if(NOT bArgNO_INSTALL)
+			nx_append(${NX_PROJECT_NAME}_TARGETS_INTERFACE "${sTargetINTERFACE}")
+		endif()
+		nx_append(${vTargetList} "${sTargetINTERFACE}")
 
-		add_library("${str_tname_interface}" INTERFACE)
+		add_library("${sTargetINTERFACE}" INTERFACE)
 		nx_target_compile_definitions(
-			"${str_tname_interface}"
-			INTERFACE ${arg_target_defines_private} ${arg_target_defines_public} ${arg_target_defines_interface}
-			DEFINE_SYMBOL ${arg_target_define_symbol}
-			STATIC_DEFINE ${arg_target_static_define})
-		nx_target_compile_features("${str_tname_interface}" INTERFACE ${arg_target_features_private} ${arg_target_features_public}
-																		${arg_target_features_interface})
-		nx_target_compile_options(
-			"${str_tname_interface}"
-			INTERFACE ${arg_target_cflags_private} ${arg_target_cxxflags_private} ${arg_target_cflags_public} ${arg_target_cxxflags_public}
-						${arg_target_cflags_interface} ${arg_target_cxxflags_interface})
-		nx_target_include_directories(
-			"${str_tname_interface}"
-			INTERFACE ${arg_target_includes_private} ${arg_target_includes_public} ${arg_target_includes_interface}
-			EXPORTABLE ${opt_exportable})
-		nx_target_link_libraries(
-			"${str_tname_interface}"
-			INTERFACE ${arg_target_depends_private} ${arg_target_depends_public} ${arg_target_depends_interface}
-						${arg_target_libdeps_private_source} ${arg_target_libdeps_public_source} ${arg_target_libdeps_interface_source})
-		nx_target_link_options("${str_tname_interface}" INTERFACE ${arg_target_ldflags_private} ${arg_target_ldflags_public}
-																	${arg_target_ldflags_interface})
+			"${sTargetINTERFACE}"
+			INTERFACE ${lsArgINTERFACE_DEFINES}
+			DEFINE_SYMBOL ${sArgDEFINE_SYMBOL}
+			STATIC_DEFINE ${sArgSTATIC_DEFINE})
+		nx_target_compile_features("${sTargetINTERFACE}" INTERFACE ${lsArgINTERFACE_FEATURES})
+		nx_target_compile_options("${sTargetINTERFACE}" INTERFACE ${lsArgINTERFACE_CFLAGS} ${lsArgINTERFACE_CXXFLAGS})
+		nx_target_include_directories("${sTargetINTERFACE}" ${sNO_INSTALL} INTERFACE ${lsArgINTERFACE_INCLUDES})
+		nx_target_link_libraries("${sTargetINTERFACE}" INTERFACE ${lsArgINTERFACE_DEPENDS} ${lsLibDepsINTERFACE_INTERFACE})
+		nx_target_link_options("${sTargetINTERFACE}" INTERFACE ${lsArgINTERFACE_LDFLAGS})
 		nx_target_sources(
-			"${str_tname_interface}"
-			INTERFACE ${arg_target_sources_private} ${arg_target_sources_public} ${arg_target_sources_interface}
-			STRIP ${arg_target_strip}
-			EXPORTABLE ${opt_exportable})
+			"${sTargetINTERFACE}" ${sNO_INSTALL}
+			INTERFACE ${lsArgINTERFACE_SOURCES}
+			STRIP ${lsArgSTRIP})
 
-		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND opt_exportable)
-			install(TARGETS "${str_tname_interface}" EXPORT "${NX_PROJECT_NAME}")
+		if(INSTALL_TARGETS${NX_PROJECT_NAME} AND NOT bArgNO_INSTALL)
+			install(TARGETS "${sTargetINTERFACE}" EXPORT "${NX_PROJECT_NAME}")
 		endif()
 	endif()
 
 	# === Add Target Alias ===
 
-	if(opt_exportable)
-		foreach(tmp_type "shared" "static" "objects" "interface")
-			if(DEFINED str_tname_${tmp_type})
-				add_library(${${NX_PROJECT_NAME}_PROJECT_PARENT}::${str_tname_${tmp_type}} ALIAS ${str_tname_${tmp_type}})
-				nx_append(${NX_PROJECT_NAME}_TARGLIST_EXPORT "${str_tname_${tmp_type}}")
+	if(NOT bArgNO_INSTALL)
+		foreach(sType "SHARED" "STATIC" "OBJECTS" "INTERFACE")
+			if(DEFINED sTarget${sType})
+				add_library(${${NX_PROJECT_NAME}_PROJECT_PARENT}::${sTarget${sType}} ALIAS ${sTarget${sType}})
+				nx_append(${NX_PROJECT_NAME}_TARGLIST_EXPORT "${sTarget${sType}}")
 			endif()
 		endforeach()
 	endif()
 
 	# === Post-Build Steps ===
 
-	unset(lst_pbs_executable)
-	unset(lst_pbs_module)
-	unset(lst_pbs_shared)
+	unset(lsPostBuildEXECUTABLE)
+	unset(lsPostBuildMODULE)
+	unset(lsPostBuildSHARED)
 
-	if(NOT NX_TARGET_PLATFORM_ANDROID
-		AND NOT NX_TARGET_PLATFORM_MSDOS
-		AND NX_TARGET_BUILD_RELEASE)
-		if(DEFINED CMAKE_OBJCOPY
+	if(sArgTYPE STREQUAL "APPLICATION")
+		set(sDPATH "${NX_INSTALL_DPATH_APPLICATIONS}")
+	elseif(sArgTYPE STREQUAL "DAEMON")
+		set(sDPATH "${NX_INSTALL_DPATH_DAEMONS}")
+	elseif(sArgTYPE STREQUAL "EXECUTABLE")
+		set(sDPATH "${NX_INSTALL_DPATH_BINARIES}")
+	elseif(sArgTYPE STREQUAL "MODULE")
+		set(sDPATH "${NX_INSTALL_DPATH_MODULES}")
+	else()
+		set(sDPATH "${NX_INSTALL_DPATH_LIBRARIES}")
+	endif()
+
+	if(NX_TARGET_BUILD_DEBUG OR NX_TARGET_BUILD_RELEASE)
+		if(NX_HOST_COMPILER_MSVC)
+			foreach(sType "EXECUTABLE" "MODULE" "SHARED")
+				if(DEFINED sTarget${sType}
+					AND INSTALL_TARGETS${NX_PROJECT_NAME}
+					AND NOT bArgNO_INSTALL)
+					get_filename_component(sFileNoExt "${sFile${sType}}" NAME_WLE)
+					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
+					install(
+						FILES "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/${sFileNoExt}.pdb"
+						DESTINATION "${sDPATH}"
+						COMPONENT ${NX_PROJECT_NAME}_DBG)
+					nx_append_global(NX_CLEANUP_DELETE "${sDPATH}/${sFileNoExt}.pdb")
+					nx_append_global(NX_CLEANUP_RMDIR "${sDPATH}")
+				endif()
+			endforeach()
+		elseif(
+			DEFINED CMAKE_OBJCOPY
 			AND EXISTS "${CMAKE_OBJCOPY}"
-			AND NOT str_target_type STREQUAL "TEST")
-			foreach(tmp_type "executable" "module" "shared")
-				if(DEFINED str_tname_${tmp_type})
+			AND NOT NX_TARGET_PLATFORM_ANDROID
+			AND NOT NX_TARGET_PLATFORM_MSDOS)
+			foreach(sType "EXECUTABLE" "MODULE" "SHARED")
+				if(DEFINED sTarget${sType}
+					AND INSTALL_TARGETS${NX_PROJECT_NAME}
+					AND NOT bArgNO_INSTALL)
 					list(
 						APPEND
-						lst_pbs_${tmp_type}
+						lsPostBuild${sType}
 						COMMAND
 						"${CMAKE_OBJCOPY}"
 						"--only-keep-debug"
-						"$<TARGET_FILE:${str_tname_${tmp_type}}>"
-						"$<TARGET_FILE:${str_tname_${tmp_type}}>.debug"
+						"$<TARGET_FILE:${sTarget${sType}}>"
+						"$<TARGET_FILE:${sTarget${sType}}>.debug"
 						COMMAND
 						"${CMAKE_OBJCOPY}"
 						"--strip-debug"
-						"$<TARGET_FILE:${str_tname_${tmp_type}}>"
+						"$<TARGET_FILE:${sTarget${sType}}>"
 						COMMAND
 						"${CMAKE_OBJCOPY}"
 						"--add-gnu-debuglink"
-						"$<TARGET_FILE:${str_tname_${tmp_type}}>.debug"
-						"$<TARGET_FILE:${str_tname_${tmp_type}}>")
+						"$<TARGET_FILE:${sTarget${sType}}>.debug"
+						"$<TARGET_FILE:${sTarget${sType}}>")
+
+					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
+					install(
+						FILES "${CMAKE_CURRENT_BINARY_DIR}/${sFile${sType}}.debug"
+						DESTINATION "${sDPATH}"
+						COMPONENT ${NX_PROJECT_NAME}_DBG)
+					nx_append_global(NX_CLEANUP_DELETE "${sDPATH}/${sFile${sType}}.debug")
+					nx_append_global(NX_CLEANUP_RMDIR "${sDPATH}")
 				endif()
 			endforeach()
-
-			if(INSTALL_TARGETS${NX_PROJECT_NAME})
-				if(DEFINED str_tname_executable AND str_target_type STREQUAL "APPLICATION")
-					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
-					nx_append(${NX_PROJECT_NAME}_FILES_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug")
-					install(
-						FILES "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug"
-						DESTINATION "${NX_INSTALL_PATH_APPS_DEBUG}"
-						COMPONENT ${NX_PROJECT_NAME}_DBG)
-					nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_APPS_DEBUG}/${str_fname_executable}.debug")
-					nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_APPS_DEBUG}")
-				elseif(DEFINED str_tname_executable AND str_target_type STREQUAL "DAEMON")
-					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
-					nx_append(${NX_PROJECT_NAME}_FILES_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug")
-					install(
-						FILES "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug"
-						DESTINATION "${NX_INSTALL_PATH_SERVERS_DEBUG}"
-						COMPONENT ${NX_PROJECT_NAME}_DBG)
-					nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_SERVERS_DEBUG}/${str_fname_executable}.debug")
-					nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_SERVERS_DEBUG}")
-				elseif(DEFINED str_tname_executable AND str_target_type STREQUAL "EXECUTABLE")
-					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
-					nx_append(${NX_PROJECT_NAME}_FILES_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug")
-					install(
-						FILES "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_executable}.debug"
-						DESTINATION "${NX_INSTALL_PATH_BINARIES_DEBUG}"
-						COMPONENT ${NX_PROJECT_NAME}_DBG)
-					nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_BINARIES_DEBUG}/${str_fname_executable}.debug")
-					nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_BINARIES_DEBUG}")
-				elseif(DEFINED str_tname_shared)
-					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
-					nx_append(${NX_PROJECT_NAME}_FILES_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_shared}.debug")
-					install(
-						FILES "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_shared}.debug"
-						DESTINATION "${NX_INSTALL_PATH_LIBRARIES_DEBUG}"
-						COMPONENT ${NX_PROJECT_NAME}_DBG)
-					nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LIBRARIES_DEBUG}/${str_fname_shared}.debug")
-					nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_LIBRARIES_DEBUG}")
-				elseif(DEFINED str_tname_module)
-					nx_set(${NX_PROJECT_NAME}_COMPONENT_DBG ON)
-					nx_append(${NX_PROJECT_NAME}_FILES_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_module}.debug")
-					install(
-						FILES "${CMAKE_CURRENT_BINARY_DIR}/${str_fname_module}.debug"
-						DESTINATION "${NX_INSTALL_PATHEXT_LIBRARIES_DEBUG}"
-						COMPONENT ${NX_PROJECT_NAME}_DBG)
-					nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHEXT_LIBRARIES_DEBUG}/${str_fname_module}.debug")
-					nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHEXT_LIBRARIES_DEBUG}")
-				endif()
-			endif()
 		endif()
 	endif()
 
-	if(NX_TARGET_PLATFORM_CYGWIN OR NX_TARGET_PLATFORM_WINDOWS)
-		if(DEFINED str_tname_executable
-			OR DEFINED str_tname_module
-			OR DEFINED str_tname_shared)
-			if(NOT str_target_type STREQUAL "TEST")
-				set(opt_certificate OFF)
-				unset(str_certificate_file)
-				unset(str_certificate_password)
-				unset(str_certificate_passfile)
+	if(bFormatWinPE
+		AND INSTALL_TARGETS${NX_PROJECT_NAME}
+		AND NOT bArgNO_INSTALL
+		AND NOT NX_TARGET_BUILD_DEBUG)
+		unset(sPFXCertificate)
+		unset(sPFXPassword)
+		unset(sPFXPassFile)
 
-				if(NOT "x$ENV{NXPACKAGE_PKCS12}" STREQUAL "x" AND EXISTS "$ENV{NXPACKAGE_PKCS12}")
-					set(str_certificate_file "$ENV{NXPACKAGE_PKCS12}")
+		if(DEFINED PKCS12_CERTIFICATE AND EXISTS "${PKCS12_CERTIFICATE}")
+			set(sPFXCertificate "${PKCS12_CERTIFICATE}")
+		elseif(NOT "x$ENV{PKCS12_CERTIFICATE}" STREQUAL "x" AND EXISTS "$ENV{PKCS12_CERTIFICATE}")
+			set(sPFXCertificate "$ENV{PKCS12_CERTIFICATE}")
+		endif()
+
+		if(DEFINED PKCS12_PASSFILE AND EXISTS "${PKCS12_PASSFILE}")
+			set(sPFXPassFile "${PKCS12_PASSFILE}")
+		elseif(DEFINED PKCS12_PASSWORD)
+			set(sPFXPassword "${PKCS12_PASSWORD}")
+		elseif(NOT "x$ENV{PKCS12_PASSFILE}" STREQUAL "x" AND EXISTS "$ENV{PKCS12_PASSFILE}")
+			set(sPFXPassFile "$ENV{PKCS12_PASSFILE}")
+		elseif(NOT "x$ENV{PKCS12_PASSWORD}" STREQUAL "x")
+			set(sPFXPassword "$ENV{PKCS12_PASSWORD}")
+		elseif(DEFINED sPFXCertificate AND EXISTS "${sPFXCertificate}cred")
+			set(sPFXPassFile "${sPFXCertificate}cred")
+		endif()
+
+		if(DEFINED sPFXCertificate)
+			find_program(OSSLSIGNCODE_EXECUTABLE NAMES "osslsigncode")
+			cmake_dependent_option(DIGSIGN_TARGETS${NX_PROJECT_NAME} "Digitally-Sign Targets - ${PROJECT_NAME}" ON
+									"OSSLSIGNCODE_EXECUTABLE" OFF)
+
+			if(DIGSIGN_TARGETS${NX_PROJECT_NAME})
+				unset(lsPFXArgs)
+				if(DEFINED sPFXPassFile)
+					list(APPEND lsPFXArgs "-readpass" "${sPFXPassFile}")
+				elseif(DEFINED sPFXPassword)
+					list(APPEND lsPFXArgs "-pass" "${sPFXPassword}")
 				endif()
 
-				if(DEFINED str_certificate_file)
-					if(NOT "x$ENV{NXPACKAGE_PKCS12READPASS}" STREQUAL "x")
-						set(str_certificate_passfile "$ENV{NXPACKAGE_PKCS12READPASS}")
-					elseif(EXISTS "${str_certificate_file}cred")
-						set(str_certificate_passfile "${str_certificate_file}cred")
-					elseif(NOT "x$ENV{NXPACKAGE_PKCS12PASS}" STREQUAL "x")
-						set(str_certificate_password "$ENV{NXPACKAGE_PKCS12PASS}")
+				foreach(sType "EXECUTABLE" "MODULE" "SHARED")
+					if(DEFINED sTarget${sType})
+						list(
+							APPEND
+							lsPostBuild${sType}
+							COMMAND
+							"${OSSLSIGNCODE_EXECUTABLE}"
+							"sign"
+							"-pkcs12"
+							"${sPFXCertificate}"
+							${lsPFXArgs}
+							"-ts"
+							"http://timestamp.digicert.com"
+							"-h"
+							"sha1"
+							"-in"
+							"$<TARGET_FILE:${sTarget${sType}}>"
+							"-out"
+							"$<TARGET_FILE:${sTarget${sType}}>.signed"
+							COMMAND
+							"${CMAKE_COMMAND}"
+							"-E"
+							"remove"
+							"$<TARGET_FILE:${sTarget${sType}}>"
+							COMMAND
+							"${OSSLSIGNCODE_EXECUTABLE}"
+							"sign"
+							"-pkcs12"
+							"${sPFXCertificate}"
+							${lsPFXArgs}
+							"-ts"
+							"http://timestamp.digicert.com"
+							"-nest"
+							"-h"
+							"sha256"
+							"-in"
+							"$<TARGET_FILE:${sTarget${sType}}>.signed"
+							"-out"
+							"$<TARGET_FILE:${sTarget${sType}}>"
+							COMMAND
+							"${CMAKE_COMMAND}"
+							"-E"
+							"remove"
+							"$<TARGET_FILE:${sTarget${sType}}>.signed")
 					endif()
-				endif()
-
-				if(DEFINED str_certificate_file)
-					find_program(OSSLSIGNCODE_EXECUTABLE NAMES "osslsigncode")
-					if(OSSLSIGNCODE_EXECUTABLE)
-						set(opt_certificate ON)
-					endif()
-				endif()
-
-				set(opt_default_sign ON)
-				if(NX_TARGET_BUILD_DEBUG)
-					set(opt_default_sign OFF)
-				endif()
-
-				nx_dependent_option(DIGSIGN_TARGETS_ALL "Digitally-Sign Targets" ${opt_default_sign} "opt_certificate" OFF)
-				nx_dependent_option(DIGSIGN_TARGETS${NX_PROJECT_NAME} "Digitally-Sign Targets - ${PROJECT_NAME}" ON "DIGSIGN_TARGETS_ALL"
-									OFF)
-
-				if(DIGSIGN_TARGETS${NX_PROJECT_NAME})
-					unset(tmp_password)
-					if(NOT "x$ENV{NXPACKAGE_PKCS12CRED}" STREQUAL "x")
-						list(APPEND tmp_password "-pass" "${str_certificate_password}")
-					elseif(EXISTS "$ENV{NXPACKAGE_PKCS12}cred")
-						list(APPEND tmp_password "-readpass" "${str_certificate_passfile}")
-					endif()
-
-					foreach(tmp_type "executable" "module" "shared")
-						if(DEFINED str_tname_${tmp_type})
-							list(
-								APPEND
-								lst_pbs_${tmp_type}
-								COMMAND
-								"${OSSLSIGNCODE_EXECUTABLE}"
-								"-pkcs12"
-								"${str_certificate_file}"
-								${tmp_password}
-								"-ts"
-								"http://timestamp.digicert.com"
-								"-h"
-								"sha1"
-								"-in"
-								"$<TARGET_FILE:${str_tname_${tmp_type}}>"
-								"-out"
-								"$<TARGET_FILE:${str_tname_${tmp_type}}>.signed"
-								COMMAND
-								"${OSSLSIGNCODE_EXECUTABLE}"
-								"-pkcs12"
-								"${str_certificate_file}"
-								${tmp_password}
-								"-ts"
-								"http://timestamp.digicert.com"
-								"-nest"
-								"-h"
-								"sha256"
-								"-in"
-								"$<TARGET_FILE:${str_tname_${tmp_type}}>.signed"
-								"-out"
-								"$<TARGET_FILE:${str_tname_${tmp_type}}>"
-								COMMAND
-								"${CMAKE_COMMAND}"
-								"-E"
-								"remove"
-								"$<TARGET_FILE:${str_tname_${tmp_type}}>.signed")
-						endif()
-					endforeach()
-
-					unset(tmp_password)
-				endif()
-
-				unset(str_certificate_password)
-				unset(str_certificate_passfile)
+				endforeach()
 			endif()
 		endif()
+
+		unset(lsPFXArgs)
+		unset(sPFXPassword)
+		unset(sPFXPassFile)
 	endif()
 
-	foreach(tmp_type "executable" "module" "shared")
-		if(DEFINED str_tname_${tmp_type} AND DEFINED lst_pbs_${tmp_type})
-			# cmake-lint: disable=E1125
+	foreach(sType "EXECUTABLE" "MODULE" "SHARED")
+		if(DEFINED sTarget${sType} AND DEFINED lsPostBuild${sType})
 			add_custom_command(
-				TARGET ${str_tname_${tmp_type}}
-				POST_BUILD ${lst_pbs_${tmp_type}}
+				TARGET ${sTarget${sType}}
+				POST_BUILD ${lsPostBuild${sType}}
 				WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-				COMMENT "[cmake] Post-Build: ${str_tname_${tmp_type}}"
+				COMMENT "[cmake] Post-Build: ${sTarget${sType}}"
 				VERBATIM)
 		endif()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-#
-# Export Package Configuration
-#
-# NOTE: Called automatically at nx_project_end for internal targets.
-#
 function(nx_target_export)
-	nx_guard_function(nx_target_export)
-	nx_function_begin()
+	_nx_guard_function(nx_target_export)
+	_nx_function_begin()
 
 	if(DEFINED ${NX_PROJECT_NAME}_TARGLIST_EXPORT)
-		unset(str_export_version)
-		set(str_export_compat "AnyNewerVersion")
+		unset(sVersionSuffix)
+		set(sExportCompatibility "AnyNewerVersion")
 		if(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT)
 			if("${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}"
 				STREQUAL
 				"${${NX_PROJECT_NAME}_PROJECT_VERSION_MAJOR}.${${NX_PROJECT_NAME}_PROJECT_VERSION_MINOR}.${${NX_PROJECT_NAME}_PROJECT_VERSION_PATCH}"
 			)
-				set(str_export_compat "ExactVersion")
+				set(sExportCompatibility "ExactVersion")
 			elseif("${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}" STREQUAL
 					"${${NX_PROJECT_NAME}_PROJECT_VERSION_MAJOR}.${${NX_PROJECT_NAME}_PROJECT_VERSION_MINOR}")
-				set(str_export_compat "SameMinorVersion")
+				set(sExportCompatibility "SameMinorVersion")
 			elseif("${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}" STREQUAL "${${NX_PROJECT_NAME}_PROJECT_VERSION_MAJOR}")
-				set(str_export_compat "SameMajorVersion")
+				set(sExportCompatibility "SameMajorVersion")
 			endif()
-			set(str_export_version "-${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
+			set(sVersionSuffix "-${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
 		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT)
 			if("${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}"
 				STREQUAL
 				"${${NX_PROJECT_NAME}_PROJECT_SOVERSION_MAJOR}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_MINOR}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_PATCH}"
 			)
-				set(str_export_compat "ExactVersion")
+				set(sExportCompatibility "ExactVersion")
 			elseif("${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}" STREQUAL
 					"${${NX_PROJECT_NAME}_PROJECT_SOVERSION_MAJOR}.${${NX_PROJECT_NAME}_PROJECT_SOVERSION_MINOR}")
-				set(str_export_compat "SameMinorVersion")
+				set(sExportCompatibility "SameMinorVersion")
 			elseif("${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}" STREQUAL "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_MAJOR}")
-				set(str_export_compat "SameMajorVersion")
+				set(sExportCompatibility "SameMajorVersion")
 			endif()
-			set(str_export_version "-${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
+			set(sVersionSuffix "-${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
 		endif()
 
-		set(str_export_component "DEV")
+		set(sExportComponent "DEV")
 		if(DEFINED ${NX_PROJECT_NAME}_COMPONENT_OBJ AND ${NX_PROJECT_NAME}_COMPONENT_OBJ)
-			set(str_export_component "OBJ")
+			set(sExportComponent "OBJ")
 		endif()
 		if(DEFINED ${NX_PROJECT_NAME}_COMPONENT_LIB AND ${NX_PROJECT_NAME}_COMPONENT_LIB)
-			set(str_export_component "OBJ")
+			set(sExportComponent "LIB")
 		endif()
 
 		export(
@@ -2569,33 +2655,33 @@ function(nx_target_export)
 			FILE "${PROJECT_NAME}Config.cmake")
 
 		if(INSTALL_TARGETS${NX_PROJECT_NAME})
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_${str_export_component} ON)
+			nx_set(${NX_PROJECT_NAME}_COMPONENT_${sExportComponent} ON)
 			install(
 				EXPORT "${NX_PROJECT_NAME}"
 				NAMESPACE "${${NX_PROJECT_NAME}_PROJECT_PARENT}::"
 				FILE "${PROJECT_NAME}Config.cmake"
-				DESTINATION "${NX_INSTALL_PATHDEV_EXPORT}/${PROJECT_NAME}${str_export_version}"
-				COMPONENT ${NX_PROJECT_NAME}_${str_export_component})
-			nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATHDEV_EXPORT}/${PROJECT_NAME}${str_export_version}")
+				DESTINATION "${NX_INSTALL_PATH_EXPORT}/${PROJECT_NAME}${sVersionSuffix}"
+				COMPONENT ${NX_PROJECT_NAME}_${sExportComponent})
+			nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATH_EXPORT}/${PROJECT_NAME}${sVersionSuffix}")
 		endif()
 
-		if(DEFINED str_export_version)
+		if(DEFINED sVersionSuffix)
 			write_basic_package_version_file(
 				"${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
 				VERSION "${${NX_PROJECT_NAME}_PROJECT_VERSION}"
-				COMPATIBILITY "${str_export_compat}")
+				COMPATIBILITY "${sExportCompatibility}")
 			if(INSTALL_TARGETS${NX_PROJECT_NAME})
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_${str_export_component} ON)
+				nx_set(${NX_PROJECT_NAME}_COMPONENT_${sExportComponent} ON)
 				install(
 					FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-					DESTINATION "${NX_INSTALL_PATHDEV_EXPORT}/${PROJECT_NAME}${str_export_version}"
-					COMPONENT ${NX_PROJECT_NAME}_${str_export_component})
+					DESTINATION "${NX_INSTALL_PATH_EXPORT}/${PROJECT_NAME}${sVersionSuffix}"
+					COMPONENT ${NX_PROJECT_NAME}_${sExportComponent})
 				nx_append_global(NX_CLEANUP_DELETE
-									"${NX_INSTALL_PATHDEV_EXPORT}/${PROJECT_NAME}${str_export_version}/${PROJECT_NAME}ConfigVersion.cmake")
-				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHDEV_EXPORT}/${PROJECT_NAME}${str_export_version}")
+									"${NX_INSTALL_PATH_EXPORT}/${PROJECT_NAME}${sVersionSuffix}/${PROJECT_NAME}ConfigVersion.cmake")
+				nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_EXPORT}/${PROJECT_NAME}${sVersionSuffix}")
 			endif()
 		endif()
 	endif()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()

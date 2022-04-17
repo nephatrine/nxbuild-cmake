@@ -16,140 +16,206 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
+# cmake-lint: disable=C0111,R0912,R0915
+
 include(_NXInternals)
 
-nx_guard_file()
+_nx_guard_file()
 
 # ===================================================================
 
 function(nx_format_clang)
-	nx_guard_function(nx_format_clang)
-	nx_function_begin()
+	_nx_guard_function(nx_format_clang)
+	_nx_function_begin()
+
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordToggle "ALL")
+	set(lsKeywordSingle "CONFIG")
+	set(lsKeywordMultiple "FILES")
+
+	set(sParseMode "FILES")
+
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgALL)
+		set(bArgALL OFF)
+	endif()
 
 	find_program(CLANG_FORMAT_EXECUTABLE NAMES "clang-format")
 
-	set(bCanFormat ON)
-	set(bDefaultFormat OFF)
-
-	unset(sFormatRules)
-
 	unset(sAll)
-	unset(lsSourceFiles)
-	foreach(sSourceFile ${ARGN})
-		if(sSourceFile STREQUAL "ALL")
-			set(sAll "ALL")
-		else()
-			list(APPEND lsSourceFiles "${sSourceFile}")
-		endif()
-	endforeach()
-
-	if(NOT DEFINED lsSourceFiles AND DEFINED ${NX_PROJECT_NAME}_FILES_SOURCE)
-		list(APPEND lsSourceFiles ${${NX_PROJECT_NAME}_FILES_SOURCE})
+	if(bArgALL)
+		set(sAll "ALL")
 	endif()
-	if(NOT DEFINED lsSourceFiles)
+
+	set(bCanFormat ON)
+	if(NOT DEFINED lsArgFILES AND DEFINED ${NX_PROJECT_NAME}_FILES_SOURCE)
+		list(APPEND lsArgFILES ${${NX_PROJECT_NAME}_FILES_SOURCE})
+	endif()
+	if(NOT DEFINED lsArgFILES)
 		set(bCanFormat OFF)
 	endif()
 
-	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.clang-format")
-		set(sFormatRules "${CMAKE_CURRENT_SOURCE_DIR}/.clang-format")
-		set(bDefaultFormat ON)
-	elseif(EXISTS "${CMAKE_SOURCE_DIR}/.clang-format")
-		set(sFormatRules "${CMAKE_SOURCE_DIR}/.clang-format")
-		set(bDefaultFormat ON)
-	endif()
-	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(bDefaultFormat OFF)
-	endif()
-
-	nx_dependent_option(ENABLE_FORMAT_CLANG_ALL "Enable Clang-Format" ON "CLANG_FORMAT_EXECUTABLE" OFF)
-	nx_dependent_option(ENABLE_FORMAT_CLANG${NX_PROJECT_NAME} "Enable Clang-Format - ${PROJECT_NAME}" ${bDefaultFormat}
-						"ENABLE_FORMAT_CLANG_ALL; bCanFormat" OFF)
-
-	if(ENABLE_FORMAT_CLANG${NX_PROJECT_NAME})
-		list(REMOVE_DUPLICATES lsSourceFiles)
-		if(DEFINED sFormatRules AND NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/.clang-format")
-			file(COPY "${sFormatRules}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+	set(bDefaultFormat OFF)
+	if(NOT DEFINED sArgCONFIG)
+		if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.clang-format")
+			set(sArgCONFIG "${CMAKE_CURRENT_SOURCE_DIR}/.clang-format")
+		elseif(EXISTS "${CMAKE_SOURCE_DIR}/.clang-format")
+			set(sArgCONFIG "${CMAKE_SOURCE_DIR}/.clang-format")
 		endif()
-		add_custom_target(
-			clang-format${NX_PROJECT_NAME}
-			${sAll}
-			COMMAND "${CLANG_FORMAT_EXECUTABLE}" -fallback-style=none -style=file -i ${lsSourceFiles}
-			DEPENDS ${lsSourceFiles} ${sFormatRules}
-			WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-			COMMENT "[clang-format] Formatting '${PROJECT_NAME}' Source Files"
-			VERBATIM)
+	endif()
+	if(DEFINED sArgCONFIG)
+		if(NOT DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL OR NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+			set(bDefaultFormat ON)
+		endif()
+	endif()
+
+	cmake_dependent_option(ENABLE_CLANG_FORMAT${NX_PROJECT_NAME} "Enable 'clang-format' - ${PROJECT_NAME}" ${bDefaultFormat}
+							"CLANG_FORMAT_EXECUTABLE;bCanFormat" OFF)
+
+	if(ENABLE_CLANG_FORMAT${NX_PROJECT_NAME})
+		list(REMOVE_DUPLICATES lsArgFILES)
+		unset(sConfigFile)
+		if(DEFINED sArgCONFIG)
+			get_filename_component(sArgCONFIG "${sArgCONFIG}" ABSOLUTE)
+			get_filename_component(sConfigFile "${sArgCONFIG}" NAME)
+
+			file(RELATIVE_PATH sConfigPath "${CMAKE_CURRENT_SOURCE_DIR}" "${sArgCONFIG}")
+			get_filename_component(sConfigPath "${sConfigPath}" DIRECTORY)
+			if(NOT sConfigPath MATCHES "^[./]*$" AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${sConfigFile}")
+				file(COPY "${sArgCONFIG}" DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}")
+			endif()
+			if(NOT EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${sConfigFile}")
+				file(COPY "${sArgCONFIG}" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
+			endif()
+		endif()
+
+		if(NOT DEFINED sConfigFile OR sConfigFile STREQUAL ".clang-format")
+			add_custom_target(
+				clang-format${NX_PROJECT_NAME}
+				${sAll}
+				COMMAND "${CLANG_FORMAT_EXECUTABLE}" -fallback-style=none -style=file -i ${lsArgFILES}
+				DEPENDS ${lsArgFILES}
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+				COMMENT "[clang-format] Formatting '${PROJECT_NAME}' Source Files"
+				VERBATIM)
+		elseif(sConfigFile STREQUAL ".clang-format")
+			add_custom_target(
+				clang-format${NX_PROJECT_NAME}
+				${sAll}
+				COMMAND "${CLANG_FORMAT_EXECUTABLE}" -fallback-style=none -style=file -i ${lsArgFILES}
+				DEPENDS ${lsArgFILES} "${sArgCONFIG}"
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+				COMMENT "[clang-format] Formatting '${PROJECT_NAME}' Source Files"
+				VERBATIM)
+		else()
+			add_custom_target(
+				clang-format${NX_PROJECT_NAME}
+				${sAll}
+				COMMAND "${CLANG_FORMAT_EXECUTABLE}" -fallback-style=none -style=file:${sConfigFile} -i ${lsArgFILES}
+				DEPENDS ${lsArgFILES} "${sArgCONFIG}"
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+				COMMENT "[clang-format] Formatting '${PROJECT_NAME}' Source Files"
+				VERBATIM)
+		endif()
 		if(NOT TARGET format)
-			add_custom_target(format)
+			add_custom_target(format COMMENT "Formatting Project(s)")
 		endif()
 		add_dependencies(format clang-format${NX_PROJECT_NAME})
 	endif()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
 function(nx_format_cmake)
-	nx_guard_function(nx_format_cmake)
-	nx_function_begin()
+	_nx_guard_function(nx_format_cmake)
+	_nx_function_begin()
+
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordToggle "ALL" "FORMAT" "TIDY")
+	set(lsKeywordSingle "CONFIG")
+	set(lsKeywordMultiple "FILES")
+
+	set(sParseMode "FILES")
+
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgALL)
+		set(bArgALL OFF)
+	endif()
+
+	if(NOT DEFINED bArgFORMAT AND NOT DEFINED bArgTIDY)
+		set(bArgFORMAT ON)
+		set(bArgTIDY ON)
+	elseif(NOT DEFINED bArgFORMAT)
+		set(bArgFORMAT OFF)
+	elseif(NOT DEFINED bArgTIDY)
+		set(bArgTIDY OFF)
+	endif()
 
 	find_program(CMAKE_FORMAT_EXECUTABLE NAMES "cmake-format")
-
-	set(bCanFormat ON)
-	set(bDefaultFormat OFF)
-
-	unset(sFormatRules)
+	find_program(CMAKE_LINT_EXECUTABLE NAMES "cmake-lint")
 
 	unset(sAll)
-	unset(lsSourceFiles)
-	foreach(sSourceFile ${ARGN})
-		if(sSourceFile STREQUAL "ALL")
-			set(sAll "ALL")
-		else()
-			list(APPEND lsSourceFiles "${sSourceFile}")
-		endif()
-	endforeach()
+	if(bArgALL)
+		set(sAll "ALL")
+	endif()
 
-	if(NOT DEFINED lsSourceFiles)
+	set(bCanFormat ON)
+	if(NOT DEFINED lsArgFILES)
 		file(
-			GLOB lsSourceFiles
+			GLOB lsArgFILES
 			LIST_DIRECTORIES false
 			"cmake/*.cmake" "tools/*.cmake")
+		list(APPEND lsArgFILES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
 	endif()
-
-	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
-		list(APPEND lsSourceFiles "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
-	endif()
-	if(NOT DEFINED lsSourceFiles)
+	if(NOT DEFINED lsArgFILES)
 		set(bCanFormat OFF)
 	endif()
 
-	if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.cmake-format")
-		set(sFormatRules "${CMAKE_CURRENT_SOURCE_DIR}/.cmake-format")
-		set(bDefaultFormat ON)
-	elseif(EXISTS "${CMAKE_SOURCE_DIR}/.cmake-format")
-		set(sFormatRules "${CMAKE_SOURCE_DIR}/.cmake-format")
-		set(bDefaultFormat ON)
-	elseif(DEFINED nxbuild_SOURCE_DIR AND EXISTS "${nxbuild_SOURCE_DIR}/.cmake-format")
-		set(sFormatRules "${nxbuild_SOURCE_DIR}/.cmake-format")
-		set(bDefaultFormat ON)
+	set(bDefaultFormat OFF)
+	if(NOT DEFINED sArgCONFIG)
+		if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.cmake-format")
+			set(sArgCONFIG "${CMAKE_CURRENT_SOURCE_DIR}/.cmake-format")
+		elseif(EXISTS "${CMAKE_SOURCE_DIR}/.cmake-format")
+			set(sArgCONFIG "${CMAKE_SOURCE_DIR}/.cmake-format")
+		elseif(DEFINED nxbuild_SOURCE_DIR AND EXISTS "${nxbuild_SOURCE_DIR}/.cmake-format")
+			set(sArgCONFIG "${nxbuild_SOURCE_DIR}/.cmake-format")
+		endif()
 	endif()
-	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(bDefaultFormat OFF)
+	if(DEFINED sArgCONFIG)
+		if(NOT DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL OR NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+			set(bDefaultFormat ON)
+		endif()
 	endif()
 
-	nx_dependent_option(ENABLE_FORMAT_CMAKE_ALL "Enable CMake-Format" ON "CMAKE_FORMAT_EXECUTABLE" OFF)
-	nx_dependent_option(ENABLE_FORMAT_CMAKE${NX_PROJECT_NAME} "Enable CMake-Format - ${PROJECT_NAME}" ${bDefaultFormat}
-						"ENABLE_FORMAT_CMAKE_ALL; bCanFormat" OFF)
+	cmake_dependent_option(ENABLE_CMAKE_FORMAT${NX_PROJECT_NAME} "Enable 'cmake-format' - ${PROJECT_NAME}" ${bDefaultFormat}
+							"CMAKE_FORMAT_EXECUTABLE;bCanFormat;bArgFORMAT" OFF)
+	cmake_dependent_option(ENABLE_CMAKE_LINT${NX_PROJECT_NAME} "Enable 'cmake-lint' - ${PROJECT_NAME}" ${bDefaultFormat}
+							"CMAKE_LINT_EXECUTABLE;bCanFormat;bArgTIDY" OFF)
 
-	if(ENABLE_FORMAT_CMAKE${NX_PROJECT_NAME})
-		list(REMOVE_DUPLICATES lsSourceFiles)
-		if(DEFINED sFormatRules)
+	if(ENABLE_CMAKE_FORMAT${NX_PROJECT_NAME})
+		list(REMOVE_DUPLICATES lsArgFILES)
+		if(DEFINED sArgCONFIG)
 			add_custom_target(
 				cmake-format${NX_PROJECT_NAME}
 				${sAll}
-				COMMAND "${CMAKE_FORMAT_EXECUTABLE}" --config "${sFormatRules}" -i ${lsSourceFiles}
-				DEPENDS ${lsSourceFiles} ${sFormatRules}
+				COMMAND "${CMAKE_FORMAT_EXECUTABLE}" --config "${sArgCONFIG}" -i ${lsArgFILES}
+				DEPENDS ${lsArgFILES} "${sArgCONFIG}"
 				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 				COMMENT "[cmake-format] Formatting '${PROJECT_NAME}' CMake Files"
 				VERBATIM)
@@ -157,17 +223,44 @@ function(nx_format_cmake)
 			add_custom_target(
 				cmake-format${NX_PROJECT_NAME}
 				${sAll}
-				COMMAND "${CMAKE_FORMAT_EXECUTABLE}" -i ${lsSourceFiles}
-				DEPENDS ${lsSourceFiles} ${sFormatRules}
+				COMMAND "${CMAKE_FORMAT_EXECUTABLE}" -i ${lsArgFILES}
+				DEPENDS ${lsArgFILES}
 				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 				COMMENT "[cmake-format] Formatting '${PROJECT_NAME}' CMake Files"
 				VERBATIM)
 		endif()
 		if(NOT TARGET format)
-			add_custom_target(format)
+			add_custom_target(format COMMENT "Formatting Project(s)")
 		endif()
 		add_dependencies(format cmake-format${NX_PROJECT_NAME})
 	endif()
 
-	nx_function_end()
+	if(ENABLE_CMAKE_LINT${NX_PROJECT_NAME})
+		list(REMOVE_DUPLICATES lsArgFILES)
+		if(DEFINED sArgCONFIG)
+			add_custom_target(
+				cmake-lint${NX_PROJECT_NAME}
+				${sAll}
+				COMMAND "${CMAKE_LINT_EXECUTABLE}" ${lsArgFILES} -c "${sArgCONFIG}"
+				DEPENDS ${lsArgFILES} "${sArgCONFIG}"
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+				COMMENT "[cmake-lint] Scanning '${PROJECT_NAME}' CMake Files"
+				VERBATIM)
+		else()
+			add_custom_target(
+				cmake-lint${NX_PROJECT_NAME}
+				${sAll}
+				COMMAND "${CMAKE_LINT_EXECUTABLE}" ${lsArgFILES}
+				DEPENDS ${lsArgFILES}
+				WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+				COMMENT "[cmake-lint] Scanning '${PROJECT_NAME}' CMake Files"
+				VERBATIM)
+		endif()
+		if(NOT TARGET tidy)
+			add_custom_target(tidy COMMENT "Scanning Project(s)")
+		endif()
+		add_dependencies(tidy cmake-lint${NX_PROJECT_NAME})
+	endif()
+
+	_nx_function_end()
 endfunction()

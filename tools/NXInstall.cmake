@@ -16,213 +16,419 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
+# cmake-lint: disable=C0111,R0912,R0915
+
 include(NXIdentify)
 
-nx_guard_file()
+if(NOT NX_TARGET_ARCHITECTURE_GENERIC)
+	if(NX_TARGET_PLATFORM_DARWIN)
+		set(CMAKE_INSTALL_NAME_DIR "@rpath")
+		set(CMAKE_INSTALL_RPATH "@loader_path")
+	else()
+		set(CMAKE_INSTALL_RPATH "$ORIGIN")
+	endif()
+	set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
+endif()
+
+_nx_guard_file()
 
 nx_set(NXINSTALL_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 # ===================================================================
 
-if(NOT DEFINED CMAKE_BUILD_RPATH_USE_ORIGIN)
-	set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
-endif()
-if(NOT DEFINED CMAKE_INSTALL_NAME_DIR AND NX_TARGET_PLATFORM_DARWIN)
-	set(CMAKE_INSTALL_NAME_DIR "@rpath")
-endif()
-if(NOT DEFINED CMAKE_INSTALL_RPATH)
-	if(NX_TARGET_PLATFORM_DARWIN)
-		set(CMAKE_INSTALL_RPATH "@loader_path")
-	else()
-		set(CMAKE_INSTALL_RPATH "$ORIGIN")
-	endif()
-endif()
-if(NOT DEFINED CMAKE_INSTALL_RPATH_USE_LINK_PATH)
-	set(CMAKE_INSTALL_RPATH_USE_LINK_PATH ON)
-endif()
+function(nx_install_set_subdir sSubDir)
+	_nx_function_begin()
 
-# ===================================================================
-
-if(NX_TARGET_PLATFORM_MSDOS OR NX_TARGET_PLATFORM_WINDOWS)
-	if(NX_TARGET_PLATFORM_NATIVE AND NOT "x$ENV{SystemDrive}" STREQUAL "x")
-		set(NX_INSTALL_PATH_DRIVE "$ENV{SystemDrive}")
-	else()
-		set(NX_INSTALL_PATH_DRIVE "C:")
-	endif()
-	set(NX_PACKAGE_PATH_DRIVE "C:")
-endif()
-
-function(nx_install_pathext subPath)
-	nx_function_begin()
-
-	if(NOT "x${subPath}" STREQUAL "x")
+	if(NOT "x${sSubDir}" STREQUAL "x")
 		if(NX_TARGET_PLATFORM_MSDOS)
-			nx_string_limit(subPath "${subPath}" 8)
+			nx_string_limit(sSubDir "${sSubDir}" 8)
 		endif()
-		set(subPath "/${subPath}")
-	endif()
-
-	# -- The Install Paths --
-
-	foreach(sPathType "DATA" "LIBRARIES" "SETTINGS")
-		unset(NX_INSTALL_PATHEXT_${sPathType})
-	endforeach()
-
-	if(NX_TARGET_PLATFORM_HAIKU)
-		# ./data/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_DATA "data/${NX_INSTALL_PROJECT_PARENT}${subPath}")
-		# ./lib/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_LIBRARIES
-			"lib${NX_INSTALL_LIBRARY_SUFFIX}/${NX_INSTALL_PROJECT_PARENT}${NX_INSTALL_LIBRARY_APPEND}${subPath}")
-		# ./settings/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_SETTINGS "settings/${NX_INSTALL_PROJECT_PARENT}${subPath}")
-	elseif(NX_TARGET_PLATFORM_MSDOS)
-		string(TOUPPER "${subPath}" subPath)
-		# ./DATA/ADDON
-		set(NX_INSTALL_PATHEXT_DATA "DATA${subPath}")
-		# ./LIB/ADDON
-		set(NX_INSTALL_PATHEXT_LIBRARIES "LIB${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}${subPath}")
-		# ./ETC/ADDON
-		set(NX_INSTALL_PATHEXT_SETTINGS "ETC${subPath}")
-	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-		# ./Data/ADDON
-		set(NX_INSTALL_PATHEXT_DATA "Data${subPath}")
-		# ./Modules/ADDON
-		set(NX_INSTALL_PATHEXT_LIBRARIES "Modules${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}${subPath}")
-		# ./Settings/ADDON
-		set(NX_INSTALL_PATHEXT_SETTINGS "Settings${subPath}")
-	else()
-		string(TOLOWER "${subPath}" subPath)
-		# ./share/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_DATA "share/${NX_INSTALL_PROJECT_PARENT}${subPath}")
-		# ./lib/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_LIBRARIES
-			"lib${NX_INSTALL_LIBRARY_SUFFIX}/${NX_INSTALL_PROJECT_PARENT}${NX_INSTALL_LIBRARY_APPEND}${subPath}")
-		# ./etc/PARENT/ADDON
-		set(NX_INSTALL_PATHEXT_SETTINGS "etc/${NX_INSTALL_PROJECT_PARENT}${subPath}")
-	endif()
-
-	if(NOT DEFINED NX_INSTALL_PATHEXT_LIBRARIES)
-		set(NX_INSTALL_PATHEXT_LIBRARIES "${NX_INSTALL_PATH_LIBRARIES}${subPath}")
-	endif()
-
-	set(NX_INSTALL_PATHEXT_LIBRARIES_DEBUG "${NX_INSTALL_PATHEXT_LIBRARIES}")
-
-	if(DEFINED CMAKE_OBJCOPY AND EXISTS "${CMAKE_OBJCOPY}")
-		set(NX_INSTALL_PATHEXT_LIBRARIES_DEBUG "${NX_INSTALL_PATHEXT_LIBRARIES_DEBUG}/.debug")
-	endif()
-
-	file(RELATIVE_PATH NX_INSTALL_PATHEXT_LIBRARIES_RPATH "/${NX_INSTALL_PATHEXT_LIBRARIES}" "/${NX_INSTALL_PATH_LIBRARIES}")
-
-	foreach(sPathType "DATA" "LIBRARIES" "LIBRARIES_DEBUG" "LIBRARIES_RPATH" "SETTINGS")
-		nx_set(NX_INSTALL_PATHEXT_${sPathType} "${NX_INSTALL_PATHEXT_${sPathType}}")
-		nx_set(${NX_PROJECT_NAME}_PATHEXT_${sPathType} "${NX_INSTALL_PATHEXT_${sPathType}}")
-	endforeach()
-
-	nx_function_end()
-endfunction()
-
-function(nx_install_initialize)
-	nx_function_begin()
-
-	set(bShouldInstall ON)
-	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(bShouldInstall OFF)
-	endif()
-
-	nx_option(INSTALL_TARGETS_ALL "Install Targets" ON)
-	nx_dependent_option(INSTALL_TARGETS${NX_PROJECT_NAME} "Install Targets - ${PROJECT_NAME}" ${bShouldInstall} "INSTALL_TARGETS_ALL" OFF)
-
-	# -- Project Version Tag --
-
-	if(NOT DEFINED NX_INSTALL_PROJECT_VERSION)
-		if(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT)
-			set(NX_INSTALL_PROJECT_VERSION "${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
-		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT)
-			set(NX_INSTALL_PROJECT_VERSION "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
-		endif()
+		set(sSubDir "/${sSubDir}")
 	endif()
 
 	# -- Project Parent Tag --
 
-	if(NOT DEFINED NX_INSTALL_PROJECT_PARENT)
-		if(DEFINED ${NX_PROJECT_NAME}_PROJECT_PARENT)
-			set(NX_INSTALL_PROJECT_PARENT "${${NX_PROJECT_NAME}_PROJECT_PARENT}")
-		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_NAME)
-			set(NX_INSTALL_PROJECT_PARENT "${${NX_PROJECT_NAME}_PROJECT_NAME}")
-		else()
-			set(NX_INSTALL_PROJECT_PARENT "${PROJECT_NAME}")
-		endif()
+	unset(sApplicationName)
+	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_PARENT)
+		set(sApplicationName "${${NX_PROJECT_NAME}_PROJECT_PARENT}")
+	elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_NAME)
+		set(sApplicationName "${${NX_PROJECT_NAME}_PROJECT_NAME}")
+	else()
+		set(sApplicationName "${PROJECT_NAME}")
 	endif()
 
-	# -- Project Child Tag --
-
-	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_NAME)
-		string(TOLOWER "${NX_INSTALL_PROJECT_PARENT}" str_lower_parent)
-		string(TOLOWER "${${NX_PROJECT_NAME}_PROJECT_NAME}" str_lower_name)
-		if(NOT str_lower_parent STREQUAL str_lower_name)
-			set(NX_INSTALL_PROJECT_CHILD "${${NX_PROJECT_NAME}_PROJECT_NAME}")
-		endif()
+	if(NX_TARGET_PLATFORM_MSDOS)
+		nx_string_limit(sApplicationName "${sApplicationName}" 8)
+		string(TOUPPER "${sApplicationName}" sApplicationName)
+	elseif(NOT NX_TARGET_PLATFORM_HAIKU AND NOT NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		string(TOLOWER "${sApplicationName}" sApplicationName)
 	endif()
 
 	# -- Project Architecture Tags --
 
-	if(NOT DEFINED NX_INSTALL_BINARY_APPEND AND NOT DEFINED NX_INSTALL_BINARY_SUFFIX)
-		if(NX_TARGET_PLATFORM_ANDROID)
-			if(DEFINED ANDROID_ABI)
-				set(NX_INSTALL_BINARY_APPEND "${ANDROID_ABI}")
-			endif()
-		elseif(NX_TARGET_PLATFORM_MSDOS)
-			if(NX_TARGET_ARCHITECTURE_IA32)
-				set(NX_INSTALL_BINARY_SUFFIX "32")
-			endif()
-		elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-			set(NX_INSTALL_BINARY_APPEND "${NX_TARGET_ARCHITECTURE_STRING}")
-		else()
-			if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-				set(NX_INSTALL_BINARY_APPEND "${NX_TARGET_ARCHITECTURE_STRING}")
-			endif()
-		endif()
+	unset(sLibraryPath)
+	unset(sLibrarySuffix)
 
-		if(DEFINED NX_INSTALL_BINARY_APPEND)
-			set(NX_INSTALL_BINARY_APPEND "/${NX_INSTALL_BINARY_APPEND}")
-			if(NX_TARGET_PLATFORM_MSDOS)
-				string(TOUPPER "${NX_INSTALL_BINARY_APPEND}" NX_INSTALL_BINARY_APPEND)
-			elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
-				string(TOLOWER "${NX_INSTALL_BINARY_APPEND}" NX_INSTALL_BINARY_APPEND)
+	if(NX_TARGET_PLATFORM_ANDROID)
+		if(DEFINED ANDROID_ABI)
+			set(sLibraryPath "${ANDROID_ABI}")
+		endif()
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		if(NX_TARGET_ARCHITECTURE_IA32)
+			set(sLibrarySuffix "32")
+		endif()
+	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+	elseif(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+	elseif(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
+		set(sLibraryPath "${CMAKE_LIBRARY_ARCHITECTURE}")
+	elseif(NX_TARGET_ARCHITECTURE_AMD64 AND NX_TARGET_PLATFORM_LINUX)
+		set(sLibrarySuffix "64")
+	elseif(NX_TARGET_ARCHITECTURE_IA32 AND NX_TARGET_PLATFORM_FREEBSD)
+		set(sLibrarySuffix "32")
+	endif()
+
+	if(DEFINED sLibraryPath)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sLibraryPath "${sLibraryPath}" 8)
+			string(TOUPPER "${sLibraryPath}" sLibraryPath)
+		elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
+			string(TOLOWER "${sLibraryPath}" sLibraryPath)
+		endif()
+		set(sLibraryPath "/${sLibraryPath}")
+	endif()
+
+	# -- The Install Paths --
+
+	foreach(sPathType "PATH_DATA" "PATH_MODULES" "PATH_CONFIGURATION" "DPATH_MODULES" "RPATH_MODULES")
+		nx_set(NX_INSTALL_${sPathType})
+	endforeach()
+
+	if(NX_TARGET_PLATFORM_HAIKU)
+		# <root>/data/myApplication/Addon1
+		nx_set(NX_INSTALL_PATH_DATA "data/${sApplicationName}${sSubDir}")
+		# <root>/lib##/myApplication/<arch>/Addon1
+		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
+		# <root>/settings/myApplication/Addon1
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "settings/${sApplicationName}${sSubDir}")
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		# installdir>/DATA/ADDON1
+		nx_set(NX_INSTALL_PATH_DATA "DATA${sSubDir}")
+		# <installdir>/LIB##/<arch>/ADDON1
+		nx_set(NX_INSTALL_PATH_MODULES "LIB${sLibrarySuffix}${sLibraryPath}${sSubDir}")
+		# <installdir>/ETC/ADDON1
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "ETC${sSubDir}")
+	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		# <installdir>/Data/Addon1
+		nx_set(NX_INSTALL_PATH_DATA "Data${sSubDir}")
+		# <installdir>/Modules##/<arch>/Addon1
+		nx_set(NX_INSTALL_PATH_MODULES "Modules${sLibrarySuffix}${sLibraryPath}${sSubDir}")
+		# <installdir>/Settings/Addon1
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "Settings${sSubDir}")
+	else()
+		# <root>/share/myapplication/addon1
+		nx_set(NX_INSTALL_PATH_DATA "share/${sApplicationName}${sSubDir}")
+		# <root>/lib##/myapplication/<arch>/addon1
+		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
+		# <root>/etc/myapplication/addon1
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "etc/${sApplicationName}${sSubDir}")
+	endif()
+
+	if(NOT DEFINED NX_INSTALL_PATH_MODULES)
+		nx_set(NX_INSTALL_PATH_MODULES "${NX_INSTALL_PATH_LIBRARIES}${sSubDir}")
+	endif()
+
+	if(DEFINED CMAKE_OBJCOPY AND EXISTS "${CMAKE_OBJCOPY}")
+		nx_set(NX_INSTALL_DPATH_MODULES "${NX_INSTALL_DPATH_MODULES}/.debug")
+	else()
+		nx_set(NX_INSTALL_DPATH_MODULES "${NX_INSTALL_PATH_MODULES}")
+	endif()
+
+	file(RELATIVE_PATH NX_INSTALL_RPATH_MODULES "/${NX_INSTALL_PATH_MODULES}" "/${NX_INSTALL_PATH_LIBRARIES}")
+
+	foreach(sPathType "PATH_DATA" "PATH_MODULES" "PATH_CONFIGURATION" "DPATH_MODULES" "RPATH_MODULES")
+		nx_set(${NX_PROJECT_NAME}_${sPathType} "${NX_INSTALL_${sPathType}}")
+	endforeach()
+
+	_nx_function_end()
+endfunction()
+
+# ===================================================================
+
+function(nx_install_initialize)
+	_nx_function_begin()
+
+	# -- Project Version Tag --
+
+	unset(sVersionCompat)
+	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT)
+		set(sVersionCompat "${${NX_PROJECT_NAME}_PROJECT_VERSION_COMPAT}")
+	elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT)
+		set(sVersionCompat "${${NX_PROJECT_NAME}_PROJECT_SOVERSION_COMPAT}")
+	endif()
+
+	# -- Project Parent Tag --
+
+	unset(sApplicationName)
+	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_PARENT)
+		set(sApplicationName "${${NX_PROJECT_NAME}_PROJECT_PARENT}")
+	elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_NAME)
+		set(sApplicationName "${${NX_PROJECT_NAME}_PROJECT_NAME}")
+	else()
+		set(sApplicationName "${PROJECT_NAME}")
+	endif()
+
+	if(NX_TARGET_PLATFORM_MSDOS)
+		nx_string_limit(sApplicationName "${sApplicationName}" 8)
+		string(TOUPPER "${sApplicationName}" sApplicationName)
+	elseif(NOT NX_TARGET_PLATFORM_HAIKU AND NOT NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		string(TOLOWER "${sApplicationName}" sApplicationName)
+	endif()
+
+	# -- Project Child Tag --
+
+	unset(sProjectName)
+	if(DEFINED ${NX_PROJECT_NAME}_PROJECT_NAME)
+		set(sProjectName "${${NX_PROJECT_NAME}_PROJECT_NAME}")
+	else()
+		set(sProjectName "${PROJECT_NAME}")
+	endif()
+
+	if(NX_TARGET_PLATFORM_MSDOS)
+		nx_string_limit(sProjectName "${sProjectName}" 8)
+		string(TOUPPER "${sProjectName}" sProjectName)
+	elseif(NOT NX_TARGET_PLATFORM_HAIKU AND NOT NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		string(TOLOWER "${sProjectName}" sProjectName)
+	endif()
+
+	if(NOT sApplicationName STREQUAL sProjectName)
+		unset(sProjectName)
+	endif()
+
+	# -- Project Architecture Tags --
+
+	unset(sBinaryPath)
+	unset(sBinarySuffix)
+
+	unset(sLibraryPath)
+	unset(sLibrarySuffix)
+
+	if(NX_TARGET_PLATFORM_ANDROID)
+		if(DEFINED ANDROID_ABI)
+			set(sBinaryPath "${ANDROID_ABI}")
+			set(sLibraryPath "${ANDROID_ABI}")
+		endif()
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		if(NX_TARGET_ARCHITECTURE_IA32)
+			set(sBinarySuffix "32")
+			set(sLibrarySuffix "32")
+		endif()
+	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+	elseif(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
+		set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+	elseif(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
+		set(sLibraryPath "${CMAKE_LIBRARY_ARCHITECTURE}")
+	elseif(NX_TARGET_ARCHITECTURE_AMD64 AND NX_TARGET_PLATFORM_LINUX)
+		set(sLibrarySuffix "64")
+	elseif(NX_TARGET_ARCHITECTURE_IA32 AND NX_TARGET_PLATFORM_FREEBSD)
+		set(sLibrarySuffix "32")
+	endif()
+
+	if(DEFINED sBinaryPath)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sBinaryPath "${sBinaryPath}" 8)
+			string(TOUPPER "${sBinaryPath}" sBinaryPath)
+		elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
+			string(TOLOWER "${sBinaryPath}" sBinaryPath)
+		endif()
+		set(sBinaryPath "/${sBinaryPath}")
+	endif()
+	if(DEFINED sLibraryPath)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sLibraryPath "${sLibraryPath}" 8)
+			string(TOUPPER "${sLibraryPath}" sLibraryPath)
+		elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
+			string(TOLOWER "${sLibraryPath}" sLibraryPath)
+		endif()
+		set(sLibraryPath "/${sLibraryPath}")
+	endif()
+
+	# -- Project Directories --
+
+	unset(sProjectDir)
+	unset(sDevelopDir)
+
+	if(NX_TARGET_PLATFORM_MSDOS OR NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		if(DEFINED sProjectName)
+			set(sProjectDir "${sProjectName}")
+			set(sDevelopDir "${sProjectName}")
+		else()
+			set(sProjectDir "${sApplicationName}")
+			set(sDevelopDir "${sApplicationName}")
+		endif()
+		if(DEFINED sVersionCompat)
+			set(sDevelopDir "${sDevelopDir}-v${sVersionCompat}")
+		endif()
+	else()
+		set(sProjectDir "${sApplicationName}")
+		set(sDevelopDir "${sApplicationName}")
+		if(DEFINED sProjectName)
+			set(sProjectDir "${sProjectDir}-${sProjectName}")
+			set(sDevelopDir "${sDevelopDir}-${sProjectName}")
+		endif()
+		if(DEFINED sVersionCompat)
+			if(NX_TARGET_PLATFORM_HAIKU)
+				set(sDevelopDir "${sDevelopDir}-v${sVersionCompat}")
+			else()
+				set(sDevelopDir "${sDevelopDir}-${sVersionCompat}")
 			endif()
 		endif()
 	endif()
 
-	if(NOT DEFINED NX_INSTALL_LIBRARY_APPEND AND NOT DEFINED NX_INSTALL_LIBRARY_SUFFIX)
-		if(NX_TARGET_PLATFORM_ANDROID)
-			if(DEFINED ANDROID_ABI)
-				set(NX_INSTALL_LIBRARY_APPEND "${ANDROID_ABI}")
-			endif()
-		elseif(NX_TARGET_PLATFORM_MSDOS)
-			if(NX_TARGET_ARCHITECTURE_IA32)
-				set(NX_INSTALL_LIBRARY_SUFFIX "32")
-			endif()
-		elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-			set(NX_INSTALL_LIBRARY_APPEND "${NX_TARGET_ARCHITECTURE_STRING}")
+	if(DEFINED sProjectDir)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sLibraryPath "${sProjectDir}" 8)
+			string(TOUPPER "${sProjectDir}" sProjectDir)
+		elseif(NOT NX_TARGET_PLATFORM_HAIKU AND NOT NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+			string(TOLOWER "${sProjectDir}" sProjectDir)
+		endif()
+		set(sProjectDir "/${sProjectDir}")
+	endif()
+	if(DEFINED sDevelopDir)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			string(TOUPPER "${sDevelopDir}" sDevelopDir)
+		elseif(NOT NX_TARGET_PLATFORM_HAIKU AND NOT NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+			string(TOLOWER "${sDevelopDir}" sDevelopDir)
+		endif()
+		set(sDevelopDir "/${sDevelopDir}")
+	endif()
+
+	# -- Installation Root --
+
+	unset(sRootPath)
+	unset(sLocalPath)
+	unset(sStagingPath)
+
+	if(NX_TARGET_PLATFORM_HAIKU)
+		if(NX_TARGET_PLATFORM_NATIVE AND NOT "x$ENV{HOME}" STREQUAL "x")
+			set(sRootPath "$ENV{HOME}/config")
 		else()
-			if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-				set(NX_INSTALL_LIBRARY_APPEND "${NX_TARGET_ARCHITECTURE_STRING}")
-			elseif(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
-				set(NX_INSTALL_LIBRARY_APPEND "${CMAKE_LIBRARY_ARCHITECTURE}")
-			elseif(NX_TARGET_ARCHITECTURE_AMD64 AND NX_TARGET_PLATFORM_LINUX)
-				set(NX_INSTALL_LIBRARY_SUFFIX "64")
-			elseif(NX_TARGET_ARCHITECTURE_IA32 AND NX_TARGET_PLATFORM_FREEBSD)
-				set(NX_INSTALL_LIBRARY_SUFFIX "32")
-			endif()
+			set(sRootPath "/boot/home/config")
+		endif()
+		if(NOT DEFINED NX_INSTALL_SYSTEM OR NOT NX_INSTALL_SYSTEM)
+			set(sLocalPath "${sRootPath}/non-packaged")
 		endif()
 
-		if(DEFINED NX_INSTALL_LIBRARY_APPEND)
-			set(NX_INSTALL_LIBRARY_APPEND "/${NX_INSTALL_LIBRARY_APPEND}")
-			if(NX_TARGET_PLATFORM_MSDOS)
-				string(TOUPPER "${NX_INSTALL_LIBRARY_APPEND}" NX_INSTALL_LIBRARY_APPEND)
-			elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
-				string(TOLOWER "${NX_INSTALL_LIBRARY_APPEND}" NX_INSTALL_LIBRARY_APPEND)
+		set(sStagingPath "${sRootPath}")
+	elseif(NX_TARGET_PLATFORM_MSDOS)
+		if(DEFINED ${NX_PROJECT_NAME}_FOLDER_NAME)
+			set(sRootPath "/${${NX_PROJECT_NAME}_FOLDER_NAME}")
+		else()
+			set(sRootPath "/${sApplicationName}")
+		endif()
+	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
+		if(DEFINED ${NX_PROJECT_NAME}_FOLDER_NAME)
+			set(sRootPath "/${${NX_PROJECT_NAME}_FOLDER_NAME}")
+		elseif(DEFINED ${NX_PROJECT_NAME}_PROJECT_VENDOR)
+			set(sRootPath "/${${NX_PROJECT_NAME}_PROJECT_VENDOR}/${sApplicationName}")
+		else()
+			set(sRootPath "/Applications/${sApplicationName}")
+		endif()
+		if(DEFINED ${NX_PROJECT_NAME}_PROJECT_VENDOR)
+			set(sStagingPath "/${${NX_PROJECT_NAME}_PROJECT_VENDOR}")
+		else()
+			set(sStagingPath "/Applications")
+		endif()
+	else()
+		set(sRootPath "/usr")
+		set(sStagingPath "${sRootPath}/opt")
+
+		if(NOT DEFINED NX_INSTALL_SYSTEM OR NOT NX_INSTALL_SYSTEM)
+			set(sLocalPath "${sRootPath}/local")
+		endif()
+	endif()
+
+	if(NOT DEFINED sLocalPath)
+		set(sLocalPath "${sRootPath}")
+	endif()
+
+	# -- Installation Drive --
+
+	unset(sInstallDrive)
+	unset(sPackageDrive)
+
+	if(NX_TARGET_PLATFORM_MSDOS OR NX_TARGET_PLATFORM_WINDOWS)
+		if(NX_TARGET_PLATFORM_NATIVE AND NOT "x$ENV{SystemDrive}" STREQUAL "x")
+			nx_set(sInstallDrive "$ENV{SystemDrive}")
+		else()
+			nx_set(sInstallDrive "C:")
+		endif()
+		nx_set(sPackageDrive "C:")
+	endif()
+
+	# -- The Prefix Paths --
+
+	if(NOT DEFINED NX_INITIALIZED_INSTALL)
+		if(DEFINED NXINSTALL_CMAKE_INSTALL_PREFIX AND "x${CMAKE_INSTALL_PREFIX}" STREQUAL "x${NXINSTALL_CMAKE_INSTALL_PREFIX}")
+			nx_set_global(NX_INITIALIZED_INSTALL ON)
+		else()
+			nx_set_global(NX_INITIALIZED_INSTALL OFF)
+		endif()
+	endif()
+	if(NOT DEFINED NX_INITIALIZED_PACKAGE)
+		if(DEFINED NXINSTALL_CPACK_INSTALL_PREFIX AND "x${CPACK_INSTALL_PREFIX}" STREQUAL "x${NXINSTALL_CPACK_INSTALL_PREFIX}")
+			nx_set_global(NX_INITIALIZED_PACKAGE ON)
+		else()
+			nx_set_global(NX_INITIALIZED_PACKAGE OFF)
+		endif()
+	endif()
+	if(NOT DEFINED NX_INITIALIZED_STAGING)
+		if(DEFINED NXINSTALL_CMAKE_STAGING_PREFIX AND "x${CMAKE_STAGING_PREFIX}" STREQUAL "x${NXINSTALL_CMAKE_STAGING_PREFIX}")
+			nx_set_global(NX_INITIALIZED_STAGING ON)
+		else()
+			nx_set_global(NX_INITIALIZED_STAGING OFF)
+		endif()
+	endif()
+
+	if(DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL AND NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+		if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR NX_INITIALIZED_INSTALL)
+			nx_set_global(NX_INITIALIZED_INSTALL ON)
+			nx_set_cache(CMAKE_INSTALL_PREFIX "${sInstallDrive}${sLocalPath}" PATH "Install Prefix")
+			nx_set_cache(NXINSTALL_CMAKE_INSTALL_PREFIX "${sInstallDrive}${sLocalPath}" INTERNAL "")
+
+			if(NOT DEFINED CPACK_INSTALL_PREFIX OR NX_INITIALIZED_PACKAGE)
+				nx_set_global(NX_INITIALIZED_PACKAGE ON)
+				nx_set_cache(CPACK_INSTALL_PREFIX "${sPackageDrive}${sRootPath}" PATH "Package Prefix")
+				nx_set_cache(NXINSTALL_CPACK_INSTALL_PREFIX "${sPackageDrive}${sRootPath}" INTERNAL "")
+			endif()
+		elseif(NOT DEFINED CPACK_INSTALL_PREFIX)
+			nx_set_global(NX_INITIALIZED_PACKAGE ON)
+			nx_set_cache(CPACK_INSTALL_PREFIX "${sPackageDrive}${sRootPath}" PATH "Package Prefix")
+			nx_set_cache(NXINSTALL_CPACK_INSTALL_PREFIX "${sPackageDrive}${sRootPath}" INTERNAL "")
+			# nx_set_global(CPACK_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
+		endif()
+
+		if(NOT DEFINED CMAKE_STAGING_PREFIX OR NX_INITIALIZED_STAGING)
+			if(DEFINED CMAKE_SYSROOT)
+				nx_set_global(NX_INITIALIZED_STAGING ON)
+				nx_set_cache(CMAKE_STAGING_PREFIX "${CMAKE_SYSROOT}${NX_INSTALL_PATH_BASE}" PATH "Staging Prefix")
+				nx_set_cache(NXINSTALL_CMAKE_STAGING_PREFIX "${CMAKE_SYSROOT}${NX_INSTALL_PATH_BASE}" INTERNAL "")
+			elseif(DEFINED CMAKE_OSX_SYSROOT)
+				nx_set_global(NX_INITIALIZED_STAGING ON)
+				nx_set_cache(CMAKE_STAGING_PREFIX "${CMAKE_OSX_SYSROOT}${NX_INSTALL_PATH_BASE}" PATH "Staging Prefix")
+				nx_set_cache(NXINSTALL_CMAKE_STAGING_PREFIX "${CMAKE_OSX_SYSROOT}${NX_INSTALL_PATH_BASE}" INTERNAL "")
+			elseif(NOT NX_TARGET_PLATFORM_NATIVE OR NOT NX_TARGET_ARCHITECTURE_NATIVE)
+				string(TOLOWER "${NX_TARGET_PLATFORM_STRING}-${NX_TARGET_ARCHITECTURE_STRING}" sSysrootName)
+				set(sSysrootPath "${sStagingPath}/sysroots/${sSysrootName}")
+
+				nx_set_global(NX_INITIALIZED_STAGING ON)
+				nx_set_cache(CMAKE_STAGING_PREFIX "${sInstallDrive}${sSysrootPath}" PATH "Staging Prefix")
+				nx_set_cache(NXINSTALL_CMAKE_STAGING_PREFIX "${sInstallDrive}${sSysrootPath}" INTERNAL "")
 			endif()
 		endif()
 	endif()
@@ -231,760 +437,598 @@ function(nx_install_initialize)
 
 	foreach(
 		sPathType
-		"APPS"
-		"BINARIES"
-		"DATA"
-		"DOCUMENTATION"
-		"LIBRARIES"
-		"LICENSES"
-		"LOCAL"
-		"ROOT"
-		"SERVERS"
-		"SETTINGS")
-		unset(NX_INSTALL_PATH_${sPathType})
-	endforeach()
-	foreach(sPathType "DOCUMENTATION" "EXPORT" "HEADERS" "LIBRARIES" "SOURCE" "SOURCE_BASE")
-		unset(NX_INSTALL_PATHDEV_${sPathType})
+		"PATH_APPLICATIONS"
+		"PATH_BINARIES"
+		"PATH_LIBRARIES"
+		"PATH_DAEMONS"
+		"PATH_MODULES"
+		"PATH_CONFIGURATION"
+		"PATH_DATA"
+		"PATH_LOCALDATA"
+		"PATH_DOCUMENTATION"
+		"PATH_LICENSES"
+		"PATH_DEVELOP"
+		"PATH_EXPORT"
+		"PATH_INCLUDE"
+		"PATH_STATIC"
+		"PATH_SOURCE"
+		"PATH_PKGSRC"
+		"DPATH_APPLICATIONS"
+		"DPATH_BINARIES"
+		"DPATH_LIBRARIES"
+		"DPATH_DAEMONS"
+		"DPATH_MODULES"
+		"RPATH_APPLICATIONS"
+		"RPATH_BINARIES"
+		"RPATH_DAEMONS"
+		"RPATH_MODULES")
+		nx_set(NX_INSTALL_${sPathType})
 	endforeach()
 
 	if(NX_TARGET_PLATFORM_HAIKU)
-		set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PROJECT_PARENT}")
-		set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PROJECT_PARENT}")
-		if(DEFINED NX_INSTALL_PROJECT_CHILD)
-			set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PATH_SPECIFIC}-${NX_INSTALL_PROJECT_CHILD}")
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}-${NX_INSTALL_PROJECT_CHILD}")
-		endif()
-		if(DEFINED NX_INSTALL_PROJECT_VERSION)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}-${NX_INSTALL_PROJECT_VERSION}")
-		endif()
+		# <root>/apps##/<arch>/myApplication
+		nx_set(NX_INSTALL_PATH_APPLICATIONS "apps${sBinarySuffix}${sBinaryPath}/${sApplicationName}")
+		# <root>/bin##/<arch>
+		nx_set(NX_INSTALL_PATH_BINARIES "bin${sBinarySuffix}${sBinaryPath}")
+		# <root>/lib##/<arch>
+		nx_set(NX_INSTALL_PATH_LIBRARIES "lib${sLibrarySuffix}${sLibraryPath}")
+		# <root>/servers##/<arch>
+		nx_set(NX_INSTALL_PATH_DAEMONS "servers${sBinarySuffix}${sBinaryPath}")
 
-		if(NX_TARGET_PLATFORM_NATIVE
-			AND NOT "x$ENV{HOME}" STREQUAL "x"
-			AND NX_HOST_PLATFORM_HAIKU)
-			set(NX_INSTALL_PATH_ROOT "$ENV{HOME}/config")
-		else()
-			set(NX_INSTALL_PATH_ROOT "/boot/home/config")
-		endif()
-		if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-			set(NX_INSTALL_PATH_ROOT "${NX_INSTALL_PATH_ROOT}/third-party/${NX_INSTALL_OPT}")
-		else(NOT DEFINED NX_INSTALL_SYSTEM OR NOT NX_INSTALL_SYSTEM)
-			set(NX_INSTALL_PATH_LOCAL "${NX_INSTALL_PATH_ROOT}/non-packaged")
-		endif()
+		# <root>/data/myApplication
+		nx_set(NX_INSTALL_PATH_DATA "data/${sApplicationName}")
+		# <root>/lib##/myApplication/<arch>
+		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
+		# <root>/settings/myApplication
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "settings/${sApplicationName}")
 
-		# ./apps/PARENT
-		set(NX_INSTALL_PATH_APPS "apps${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}/${NX_INSTALL_PROJECT_PARENT}")
-		# ./bin
-		set(NX_INSTALL_PATH_BINARIES "bin${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}")
-		# ./lib
-		set(NX_INSTALL_PATH_LIBRARIES "lib${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./servers
-		set(NX_INSTALL_PATH_SERVERS "servers${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}")
+		# <root>/data/myApplication-Addon1
+		nx_set(NX_INSTALL_PATH_LOCALDATA "data${sProjectDir}")
+		# <root>/documentation/packages/myApplication-Addon1
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "documentation/packages${sProjectDir}")
 
-		# ./data/PARENT || ./data/PARENT-CHILD
-		set(NX_INSTALL_PATH_DATA "data/${NX_INSTALL_PATH_SPECIFIC}")
-		# ./documentation/packages/PARENT || ./documentation/packages/PARENT-CHILD
-		set(NX_INSTALL_PATH_DOCUMENTATION "documentation/packages/${NX_INSTALL_PATH_SPECIFIC}")
-		# ./settings/PARENT || ./settings/PARENT-CHILD
-		set(NX_INSTALL_PATH_SETTINGS "settings/${NX_INSTALL_PATH_SPECIFIC}")
-
-		# ./develop/documenation/packages/PARENT-CHILD-v3
-		set(NX_INSTALL_PATHDEV_DOCUMENTATION "develop/documentation/packages/${NX_INSTALL_PATHDEV_SPECIFIC}")
-		# ./develop/lib/cmake
-		set(NX_INSTALL_PATHDEV_EXPORT "develop/lib${NX_INSTALL_LIBRARY_SUFFIX}/cmake${NX_INSTALL_LIBRARY_APPEND}")
-		# ./develop/headers/PARENT-CHILD-v3
-		set(NX_INSTALL_PATHDEV_HEADERS "develop/headers/${NX_INSTALL_PATHDEV_SPECIFIC}")
-		# ./develop/lib
-		set(NX_INSTALL_PATHDEV_LIBRARIES "develop/lib${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./develop/sources/PARENT-CHILD-v3
-		set(NX_INSTALL_PATHDEV_SOURCE "develop/sources/${NX_INSTALL_PATHDEV_SPECIFIC}")
-		# ./develop/sources
-		set(NX_INSTALL_PATHDEV_SOURCE_BASE "develop/sources")
+		# <root>/develop/documenation/packages/myApplication-Addon1-v3
+		nx_set(NX_INSTALL_PATH_DEVELOP "develop/documentation/packages${sDevelopDir}")
+		# <root>/develop/lib/cmake
+		nx_set(NX_INSTALL_PATH_EXPORT "develop/lib${sLibrarySuffix}/cmake${sLibraryPath}")
+		# <root>/develop/headers/myApplication-Addon1-v3
+		nx_set(NX_INSTALL_PATH_INCLUDE "develop/headers${sDevelopDir}")
+		# <root>/develop/lib##/<arch>
+		nx_set(NX_INSTALL_PATH_STATIC "develop/lib${sLibrarySuffix}${sLibraryPath}")
+		# <root>/develop/sources/myApplication-Addon1-v3
+		nx_set(NX_INSTALL_PATH_SOURCE "develop/sources${sDevelopDir}")
+		# <root>/develop/sources
+		nx_set(NX_INSTALL_PATH_PKGSRC "develop/sources")
 	elseif(NX_TARGET_PLATFORM_MSDOS)
-		unset(NX_INSTALL_PATH_SPECIFIC)
-		unset(NX_INSTALL_PATHDEV_SPECIFIC)
-		if(DEFINED NX_INSTALL_PROJECT_CHILD)
-			set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PROJECT_CHILD}")
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PROJECT_CHILD}")
-			if(DEFINED NX_INSTALL_PROJECT_VERSION)
-				set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}${NX_INSTALL_PROJECT_VERSION}")
-			endif()
-		elseif(DEFINED NX_INSTALL_PROJECT_VERSION)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "v${NX_INSTALL_PROJECT_VERSION}")
-		endif()
+		# <installdir>/BIN##/<arch>
+		nx_set(NX_INSTALL_PATH_BINARIES "BIN${sBinarySuffix}${sBinaryPath}")
 
-		if(DEFINED NX_INSTALL_PATH_SPECIFIC)
-			nx_string_limit(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PATH_SPECIFIC}" 8)
-			string(TOUPPER "${NX_INSTALL_PATH_SPECIFIC}" NX_INSTALL_PATH_SPECIFIC)
-			set(NX_INSTALL_PATH_SPECIFIC "PKG/${NX_INSTALL_PATH_SPECIFIC}/")
-		endif()
-		if(DEFINED NX_INSTALL_PATHDEV_SPECIFIC)
-			nx_string_limit(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}" 8)
-			string(TOUPPER "${NX_INSTALL_PATHDEV_SPECIFIC}" NX_INSTALL_PATHDEV_SPECIFIC)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}/")
-		endif()
+		# installdir>/DATA
+		nx_set(NX_INSTALL_PATH_DATA "DATA")
+		# <installdir>/LIB##/<arch>
+		nx_set(NX_INSTALL_PATH_MODULES "LIB${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/ETC
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "ETC")
 
-		nx_string_limit(NX_INSTALL_PROJECT_PARENT "${NX_INSTALL_PROJECT_PARENT}" 8)
-		string(TOUPPER "${NX_INSTALL_PROJECT_PARENT}" NX_INSTALL_PROJECT_PARENT)
-		set(NX_INSTALL_PATH_ROOT "/${NX_INSTALL_PROJECT_PARENT}")
+		# <installdir>/LOCAL/ADDON1
+		nx_set(NX_INSTALL_PATH_LOCALDATA "LOCAL${sProjectDir}")
+		# <installdir>/DOCS/ADDON1
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "DOCS${sProjectDir}")
 
-		# ./BIN
-		set(NX_INSTALL_PATH_BINARIES "BIN${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}")
-
-		# ./DATA || ./PKG/CHILD/DATA
-		set(NX_INSTALL_PATH_DATA "${NX_INSTALL_PATH_SPECIFIC}DATA")
-		# ./DOCS || ./PKG/CHILD/DOCS
-		set(NX_INSTALL_PATH_DOCUMENTATION "${NX_INSTALL_PATH_SPECIFIC}DOCS")
-		# ./ETC || ./PKG/CHILD/ETC
-		set(NX_INSTALL_PATH_SETTINGS "${NX_INSTALL_PATH_SPECIFIC}ETC")
-
-		# ./SDK/CHILD-v3/DOCS
-		set(NX_INSTALL_PATHDEV_DOCUMENTATION "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}DOCS")
-		# ./SDK/CMAKE
-		set(NX_INSTALL_PATHDEV_EXPORT "SDK/CMAKE${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./SDK/CHILD-v3/INCLUDE
-		set(NX_INSTALL_PATHDEV_HEADERS "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}INCLUDE")
-		# ./SDK/CHILD-v3/LIB
-		set(NX_INSTALL_PATHDEV_LIBRARIES "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}LIB${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./SDK/CHILD-v3/SRC
-		set(NX_INSTALL_PATHDEV_SOURCE "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}SRC")
-		# ./SRC
-		set(NX_INSTALL_PATHDEV_SOURCE_BASE "SRC")
+		# <installdir>/SDK/ADDON1-V3/DOCS
+		nx_set(NX_INSTALL_PATH_DEVELOP "SDK${sDevelopDir}/DOCS")
+		# <installdir>/SDK/CMAKE##/<arch>
+		nx_set(NX_INSTALL_PATH_EXPORT "SDK/CMAKE${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/SDK/ADDON1-V3/INCLUDE
+		nx_set(NX_INSTALL_PATH_INCLUDE "SDK${sDevelopDir}/INCLUDE")
+		# <installdir>/SDK/ADDON1-V3/LIB##/<arch>
+		nx_set(NX_INSTALL_PATH_STATIC "SDK${sDevelopDir}/LIB${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/SDK/ADDON1-V3/SRC
+		nx_set(NX_INSTALL_PATH_SOURCE "SDK${sDevelopDir}/SRC")
+		# <installdir>/SRC
+		nx_set(NX_INSTALL_PATH_PKGSRC "SRC")
 	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-		unset(NX_INSTALL_PATH_SPECIFIC)
-		unset(NX_INSTALL_PATHDEV_SPECIFIC)
-		if(DEFINED NX_INSTALL_PROJECT_CHILD)
-			set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PROJECT_CHILD}")
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PROJECT_CHILD}")
-			if(DEFINED NX_INSTALL_PROJECT_VERSION)
-				set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}-v${NX_INSTALL_PROJECT_VERSION}")
-			endif()
-		elseif(DEFINED NX_INSTALL_PROJECT_VERSION)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "v${NX_INSTALL_PROJECT_VERSION}")
-		endif()
+		# <installdir>/Binaries##/<arch>
+		nx_set(NX_INSTALL_PATH_BINARIES "Binaries${sBinarySuffix}${sBinaryPath}")
 
-		if(DEFINED NX_INSTALL_PATH_SPECIFIC)
-			set(NX_INSTALL_PATH_SPECIFIC "Addons/${NX_INSTALL_PATH_SPECIFIC}/")
-		endif()
-		if(DEFINED NX_INSTALL_PATHDEV_SPECIFIC)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}/")
-		endif()
+		# <installdir>/Data
+		nx_set(NX_INSTALL_PATH_DATA "Data")
+		# <installdir>/Modules##/<arch>
+		nx_set(NX_INSTALL_PATH_MODULES "Modules${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/Settings
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "Settings")
 
-		set(NX_INSTALL_PATH_ROOT "/NX/${NX_INSTALL_PROJECT_PARENT}")
+		# <installdir>/LocalData/Addon1
+		nx_set(NX_INSTALL_PATH_LOCALDATA "LocalData${sProjectDir}")
+		# <installdir>/Documentation/Addon1
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "Documentation${sProjectDir}")
 
-		# ./Binaries
-		set(NX_INSTALL_PATH_BINARIES "Binaries${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}")
-
-		# ./Data || ./Addons/CHILD/Data
-		set(NX_INSTALL_PATH_DATA "${NX_INSTALL_PATH_SPECIFIC}Data")
-		# ./Documentation || ./Addons/CHILD/Documentation
-		set(NX_INSTALL_PATH_DOCUMENTATION "${NX_INSTALL_PATH_SPECIFIC}Documentation")
-		# ./Settings || ./Addons/CHILD/Settings
-		set(NX_INSTALL_PATH_SETTINGS "${NX_INSTALL_PATH_SPECIFIC}Settings")
-
-		# ./SDK/CHILD-v3/Documentation
-		set(NX_INSTALL_PATHDEV_DOCUMENTATION "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}Documentation")
-		# ./SDK/CMake
-		set(NX_INSTALL_PATHDEV_EXPORT "SDK/CMake${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./SDK/CHILD-v3/Headers
-		set(NX_INSTALL_PATHDEV_HEADERS "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}Headers")
-		# ./SDK/CHILD-v3/Libraries
-		set(NX_INSTALL_PATHDEV_LIBRARIES
-			"SDK/${NX_INSTALL_PATHDEV_SPECIFIC}Libraries${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
-		# ./SDK/CHILD-v3/Sources
-		set(NX_INSTALL_PATHDEV_SOURCE "SDK/${NX_INSTALL_PATHDEV_SPECIFIC}Sources")
-		# ./Sources
-		set(NX_INSTALL_PATHDEV_SOURCE_BASE "Sources")
+		# <installdir>/SDK/Addon1-v3/Documentation
+		nx_set(NX_INSTALL_PATH_DEVELOP "SDK${sDevelopDir}/Documentation")
+		# <installdir>/SDK/CMake##/<arch>
+		nx_set(NX_INSTALL_PATH_EXPORT "SDK/CMake${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/SDK/Addon1-v3/Headers
+		nx_set(NX_INSTALL_PATH_INCLUDE "SDK${sDevelopDir}/Headers")
+		# <installdir>/SDK/Addon1-v3/Libraries
+		nx_set(NX_INSTALL_PATH_STATIC "SDK${sDevelopDir}/Libraries${sLibrarySuffix}${sLibraryPath}")
+		# <installdir>/SDK/Addon1-v3/Sources
+		nx_set(NX_INSTALL_PATH_SOURCE "SDK${sDevelopDir}/Sources")
+		# <installdir>/Sources
+		nx_set(NX_INSTALL_PATH_PKGSRC "Sources")
 	else()
-		set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PROJECT_PARENT}")
-		set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PROJECT_PARENT}")
-		if(DEFINED NX_INSTALL_PROJECT_CHILD)
-			set(NX_INSTALL_PATH_SPECIFIC "${NX_INSTALL_PATH_SPECIFIC}-${NX_INSTALL_PROJECT_CHILD}")
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}-${NX_INSTALL_PROJECT_CHILD}")
-		endif()
-		if(DEFINED NX_INSTALL_PROJECT_VERSION)
-			set(NX_INSTALL_PATHDEV_SPECIFIC "${NX_INSTALL_PATHDEV_SPECIFIC}-${NX_INSTALL_PROJECT_VERSION}")
-		endif()
+		# <root>/bin##/<arch>
+		nx_set(NX_INSTALL_PATH_BINARIES "bin${sBinarySuffix}${sBinaryPath}")
 
-		if(DEFINED NX_INSTALL_PATH_SPECIFIC)
-			string(TOLOWER "${NX_INSTALL_PATH_SPECIFIC}" NX_INSTALL_PATH_SPECIFIC)
-		endif()
-		if(DEFINED NX_INSTALL_PATHDEV_SPECIFIC)
-			string(TOLOWER "${NX_INSTALL_PATHDEV_SPECIFIC}" NX_INSTALL_PATHDEV_SPECIFIC)
-		endif()
-		string(TOLOWER "${NX_INSTALL_PROJECT_PARENT}" NX_INSTALL_PROJECT_PARENT)
-
-		set(NX_INSTALL_PATH_ROOT "/usr")
-		if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-			set(NX_INSTALL_PATH_ROOT "${NX_INSTALL_PATH_ROOT}/opt/${NX_INSTALL_OPT}")
-		else(NOT DEFINED NX_INSTALL_SYSTEM OR NOT NX_INSTALL_SYSTEM)
-			set(NX_INSTALL_PATH_LOCAL "${NX_INSTALL_PATH_ROOT}/local")
-		endif()
-
-		# ./bin
-		set(NX_INSTALL_PATH_BINARIES "bin${NX_INSTALL_BINARY_SUFFIX}${NX_INSTALL_BINARY_APPEND}")
-
-		# ./lib
+		# <root>/lib##/<arch>
 		if(NX_TARGET_PLATFORM_CYGWIN OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
-			set(NX_INSTALL_PATHDEV_LIBRARIES "lib${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
+			nx_set(NX_INSTALL_PATH_STATIC "lib${sLibrarySuffix}${sLibraryPath}")
 		else()
-			set(NX_INSTALL_PATH_LIBRARIES "lib${NX_INSTALL_LIBRARY_SUFFIX}${NX_INSTALL_LIBRARY_APPEND}")
+			nx_set(NX_INSTALL_PATH_LIBRARIES "lib${sLibrarySuffix}${sLibraryPath}")
 		endif()
 
-		# ./share/PARENT || ./share/PARENT-CHILD
-		set(NX_INSTALL_PATH_DATA "share/${NX_INSTALL_PATH_SPECIFIC}")
-		# ./share/doc/PARENT || ./share/doc/PARENT-CHILD
-		set(NX_INSTALL_PATH_DOCUMENTATION "share/doc/${NX_INSTALL_PATH_SPECIFIC}")
-		# ./share/licenses/PARENT || ./share/licenses/PARENT-CHILD
-		set(NX_INSTALL_PATH_LICENSES "share/licenses/${NX_INSTALL_PATH_SPECIFIC}")
-		# ./etc/PARENT || ./etc/PARENT-CHILD
-		set(NX_INSTALL_PATH_SETTINGS "etc/${NX_INSTALL_PATH_SPECIFIC}")
+		# <root>/share/myapplication
+		nx_set(NX_INSTALL_PATH_DATA "share/${sApplicationName}")
+		# <root>/lib##/myapplication/<arch>
+		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
+		# <root>/etc/myapplication
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "etc/${sApplicationName}")
 
-		# ./lib/cmake
-		set(NX_INSTALL_PATHDEV_EXPORT "lib${NX_INSTALL_LIBRARY_SUFFIX}/cmake${NX_INSTALL_LIBRARY_APPEND}")
-		# ./include/PARENT-CHILD-v3
-		set(NX_INSTALL_PATHDEV_HEADERS "include/${NX_INSTALL_PATHDEV_SPECIFIC}")
-		# ./src/PARENT-CHILD-v3
-		set(NX_INSTALL_PATHDEV_SOURCE "src/${NX_INSTALL_PATHDEV_SPECIFIC}")
-		# ./src
-		set(NX_INSTALL_PATHDEV_SOURCE_BASE "src")
+		# <root>/share/myapplication-addon1
+		nx_set(NX_INSTALL_PATH_LOCALDATA "share${sProjectDir}")
+		# <root>/share/doc/myapplication-addon1
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "share/doc${sProjectDir}")
+		# <root>/share/licenses/myapplication-addon1
+		nx_set(NX_INSTALL_PATH_LICENSES "share/licenses${sProjectDir}")
+
+		# <root>/lib/cmake##/<arch>
+		nx_set(NX_INSTALL_PATH_EXPORT "lib${sLibrarySuffix}/cmake${sLibraryPath}")
+		# <root>/include/myapplication-addon1-3
+		nx_set(NX_INSTALL_PATH_INCLUDE "include${sDevelopDir}")
+		# <root>/src/myapplication-addon1-3
+		nx_set(NX_INSTALL_PATH_SOURCE "src${sDevelopDir}")
+		# <root>/src
+		nx_set(NX_INSTALL_PATH_PKGSRC "src")
 	endif()
 
-	if(NOT DEFINED NX_INSTALL_PATH_LOCAL)
-		set(NX_INSTALL_PATH_LOCAL "${NX_INSTALL_PATH_ROOT}")
+	if(NOT DEFINED NX_INSTALL_PATH_APPLICATIONS)
+		nx_set(NX_INSTALL_PATH_APPLICATIONS "${NX_INSTALL_PATH_BINARIES}")
 	endif()
-
-	if(NOT DEFINED NX_INSTALL_PATH_APPS)
-		set(NX_INSTALL_PATH_APPS "${NX_INSTALL_PATH_BINARIES}")
+	if(NOT DEFINED NX_INSTALL_PATH_DAEMONS)
+		nx_set(NX_INSTALL_PATH_DAEMONS "${NX_INSTALL_PATH_BINARIES}")
 	endif()
 	if(NOT DEFINED NX_INSTALL_PATH_LIBRARIES)
-		set(NX_INSTALL_PATH_LIBRARIES "${NX_INSTALL_PATH_BINARIES}")
-	endif()
-	if(NOT DEFINED NX_INSTALL_PATH_LICENSES)
-		set(NX_INSTALL_PATH_LICENSES "${NX_INSTALL_PATH_DOCUMENTATION}")
-	endif()
-	if(NOT DEFINED NX_INSTALL_PATH_SERVERS)
-		set(NX_INSTALL_PATH_SERVERS "${NX_INSTALL_PATH_BINARIES}")
-	endif()
-	if(NOT DEFINED NX_INSTALL_PATHDEV_DOCUMENTATION)
-		set(NX_INSTALL_PATHDEV_DOCUMENTATION "${NX_INSTALL_PATH_DOCUMENTATION}")
-	endif()
-	if(NOT DEFINED NX_INSTALL_PATHDEV_LIBRARIES)
-		set(NX_INSTALL_PATHDEV_LIBRARIES "${NX_INSTALL_PATH_LIBRARIES}")
+		nx_set(NX_INSTALL_PATH_LIBRARIES "${NX_INSTALL_PATH_BINARIES}")
 	endif()
 
-	set(NX_INSTALL_PATH_APPS_DEBUG "${NX_INSTALL_PATH_APPS}")
-	set(NX_INSTALL_PATH_BINARIES_DEBUG "${NX_INSTALL_PATH_BINARIES}")
-	set(NX_INSTALL_PATH_LIBRARIES_DEBUG "${NX_INSTALL_PATH_LIBRARIES}")
-	set(NX_INSTALL_PATH_SERVERS_DEBUG "${NX_INSTALL_PATH_SERVERS}")
+	if(NOT DEFINED NX_INSTALL_PATH_LICENSES)
+		nx_set(NX_INSTALL_PATH_LICENSES "${NX_INSTALL_PATH_DOCUMENTATION}")
+	endif()
+	if(NOT DEFINED NX_INSTALL_PATH_DEVELOP)
+		nx_set(NX_INSTALL_PATH_DEVELOP "${NX_INSTALL_PATH_DOCUMENTATION}")
+	endif()
+
+	if(NOT DEFINED NX_INSTALL_PATH_STATIC)
+		nx_set(NX_INSTALL_PATH_STATIC "${NX_INSTALL_PATH_LIBRARIES}")
+	endif()
 
 	if(DEFINED CMAKE_OBJCOPY AND EXISTS "${CMAKE_OBJCOPY}")
-		set(NX_INSTALL_PATH_APPS_DEBUG "${NX_INSTALL_PATH_APPS_DEBUG}/.debug")
-		set(NX_INSTALL_PATH_BINARIES_DEBUG "${NX_INSTALL_PATH_BINARIES_DEBUG}/.debug")
-		set(NX_INSTALL_PATH_LIBRARIES_DEBUG "${NX_INSTALL_PATH_LIBRARIES_DEBUG}/.debug")
-		set(NX_INSTALL_PATH_SERVERS_DEBUG "${NX_INSTALL_PATH_SERVERS_DEBUG}/.debug")
+		nx_set(NX_INSTALL_DPATH_APPLICATIONS "${NX_INSTALL_PATH_APPLICATIONS}/.debug")
+		nx_set(NX_INSTALL_DPATH_BINARIES "${NX_INSTALL_PATH_BINARIES}/.debug")
+		nx_set(NX_INSTALL_DPATH_LIBRARIES "${NX_INSTALL_PATH_LIBRARIES}/.debug")
+		nx_set(NX_INSTALL_DPATH_DAEMONS "${NX_INSTALL_PATH_DAEMONS}/.debug")
+	else()
+		nx_set(NX_INSTALL_DPATH_APPLICATIONS "${NX_INSTALL_PATH_APPLICATIONS}")
+		nx_set(NX_INSTALL_DPATH_BINARIES "${NX_INSTALL_PATH_BINARIES}")
+		nx_set(NX_INSTALL_DPATH_LIBRARIES "${NX_INSTALL_PATH_LIBRARIES}")
+		nx_set(NX_INSTALL_DPATH_DAEMONS "${NX_INSTALL_PATH_DAEMONS}")
 	endif()
 
-	file(RELATIVE_PATH NX_INSTALL_PATH_APPS_RPATH "/${NX_INSTALL_PATH_APPS}" "/${NX_INSTALL_PATH_LIBRARIES}")
-	file(RELATIVE_PATH NX_INSTALL_PATH_BINARIES_RPATH "/${NX_INSTALL_PATH_BINARIES}" "/${NX_INSTALL_PATH_LIBRARIES}")
-	file(RELATIVE_PATH NX_INSTALL_PATH_SERVERS_RPATH "/${NX_INSTALL_PATH_SERVERS}" "/${NX_INSTALL_PATH_LIBRARIES}")
-
-	nx_install_pathext("")
+	file(RELATIVE_PATH NX_INSTALL_RPATH_APPLICATIONS "/${NX_INSTALL_PATH_APPLICATIONS}" "/${NX_INSTALL_PATH_LIBRARIES}")
+	file(RELATIVE_PATH NX_INSTALL_RPATH_BINARIES "/${NX_INSTALL_PATH_BINARIES}" "/${NX_INSTALL_PATH_LIBRARIES}")
+	file(RELATIVE_PATH NX_INSTALL_RPATH_DAEMONS "/${NX_INSTALL_PATH_DAEMONS}" "/${NX_INSTALL_PATH_LIBRARIES}")
 
 	foreach(
 		sPathType
-		"APPS"
-		"APPS_DEBUG"
-		"APPS_RPATH"
-		"BINARIES"
-		"BINARIES_DEBUG"
-		"BINARIES_RPATH"
-		"DATA"
-		"DOCUMENTATION"
-		"LIBRARIES"
-		"LIBRARIES_DEBUG"
-		"LICENSES"
-		"LOCAL"
-		"ROOT"
-		"SERVERS"
-		"SERVERS_DEBUG"
-		"SERVERS_RPATH"
-		"SETTINGS")
-		nx_set(NX_INSTALL_PATH_${sPathType} "${NX_INSTALL_PATH_${sPathType}}")
-		nx_set(${NX_PROJECT_NAME}_PATH_${sPathType} "${NX_INSTALL_PATH_${sPathType}}")
-	endforeach()
-	foreach(sPathType "DOCUMENTATION" "EXPORT" "HEADERS" "LIBRARIES" "SOURCE" "SOURCE_BASE")
-		nx_set(NX_INSTALL_PATHDEV_${sPathType} "${NX_INSTALL_PATHDEV_${sPathType}}")
-		nx_set(${NX_PROJECT_NAME}_PATHDEV_${sPathType} "${NX_INSTALL_PATHDEV_${sPathType}}")
-	endforeach()
-	foreach(sPathType "LIBRARY_APPEND" "LIBRARY_SUFFIX" "PROJECT_PARENT")
-		nx_set(NX_INSTALL_${sPathType} "${NX_INSTALL_${sPathType}}")
+		"PATH_APPLICATIONS"
+		"PATH_BINARIES"
+		"PATH_LIBRARIES"
+		"PATH_DAEMONS"
+		"PATH_MODULES"
+		"PATH_CONFIGURATION"
+		"PATH_DATA"
+		"PATH_LOCALDATA"
+		"PATH_DOCUMENTATION"
+		"PATH_LICENSES"
+		"PATH_DEVELOP"
+		"PATH_EXPORT"
+		"PATH_INCLUDE"
+		"PATH_STATIC"
+		"PATH_SOURCE"
+		"PATH_PKGSRC"
+		"DPATH_APPLICATIONS"
+		"DPATH_BINARIES"
+		"DPATH_LIBRARIES"
+		"DPATH_DAEMONS"
+		"DPATH_MODULES"
+		"RPATH_APPLICATIONS"
+		"RPATH_BINARIES"
+		"RPATH_DAEMONS"
+		"RPATH_MODULES")
 		nx_set(${NX_PROJECT_NAME}_${sPathType} "${NX_INSTALL_${sPathType}}")
 	endforeach()
 
-	nx_function_end()
-endfunction()
-
-function(nx_install_prefixes)
-	nx_function_begin()
-
-	if(NOT DEFINED NX_INITIALIZED_INSTALL)
-		nx_set_global(NX_INITIALIZED_INSTALL OFF)
-	endif()
-	if(NOT DEFINED NX_INITIALIZED_PACKAGE)
-		nx_set_global(NX_INITIALIZED_PACKAGE OFF)
-	endif()
-	if(NOT DEFINED NX_INITIALIZED_STAGING)
-		nx_set_global(NX_INITIALIZED_STAGING OFF)
-	endif()
-
-	if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT OR NX_INITIALIZED_INSTALL)
-		set(NX_INITIALIZED_INSTALL ON)
-		nx_set_global(CMAKE_INSTALL_PREFIX "${NX_INSTALL_PATH_DRIVE}${NX_INSTALL_PATH_LOCAL}")
-
-		if(NOT DEFINED CPACK_INSTALL_PREFIX OR NX_INITIALIZED_PACKAGE)
-			set(NX_INITIALIZED_PACKAGE ON)
-			nx_set_global(CPACK_INSTALL_PREFIX "${NX_PACKAGE_PATH_DRIVE}${NX_INSTALL_PATH_ROOT}")
-		endif()
-	elseif(NOT DEFINED CPACK_INSTALL_PREFIX OR NX_INITIALIZED_PACKAGE)
-		set(NX_INITIALIZED_PACKAGE ON)
-		nx_set_global(CPACK_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
-	endif()
-
-	if(NOT DEFINED CMAKE_STAGING_PREFIX OR NX_INITIALIZED_STAGING)
-		if(DEFINED CMAKE_SYSROOT)
-			set(NX_INITIALIZED_STAGING ON)
-			nx_set_global(CMAKE_STAGING_PREFIX "${CMAKE_SYSROOT}${NX_INSTALL_PATH_BASE}")
-		elseif(DEFINED CMAKE_OSX_SYSROOT)
-			set(NX_INITIALIZED_STAGING ON)
-			nx_set_global(CMAKE_STAGING_PREFIX "${CMAKE_OSX_SYSROOT}${NX_INSTALL_PATH_BASE}")
-		elseif(NOT NX_TARGET_PLATFORM_NATIVE OR NOT NX_TARGET_ARCHITECTURE_NATIVE)
-			set(NX_CMAKE_SYSROOT_PATH "sysroots/${NX_TARGET_PLATFORM_STRING}-${NX_TARGET_ARCHITECTURE_STRING}")
-			if(NX_HOST_PLATFORM_HAIKU)
-				string(TOLOWER "${NX_CMAKE_SYSROOT_PATH}" NX_CMAKE_SYSROOT_PATH)
-				if(NX_TARGET_PLATFORM_NATIVE
-					AND NOT "x$ENV{HOME}" STREQUAL "x"
-					AND NX_HOST_PLATFORM_HAIKU)
-					set(NX_STAGING_PATH_ROOT "$ENV{HOME}/config/third-party/${NX_CMAKE_SYSROOT_PATH}")
-				else()
-					set(NX_STAGING_PATH_ROOT "/boot/home/config/third-party/${NX_CMAKE_SYSROOT_PATH}")
-				endif()
-			elseif(NX_HOST_PLATFORM_WINDOWS)
-				if(NOT "x$ENV{SystemDrive}" STREQUAL "x")
-					set(NX_STAGING_PATH_DRIVE "$ENV{SystemDrive}")
-				else()
-					set(NX_STAGING_PATH_DRIVE "C:")
-				endif()
-				set(NX_STAGING_PATH_ROOT "/${NX_CMAKE_SYSROOT_PATH}")
-			else()
-				string(TOLOWER "${NX_CMAKE_SYSROOT_PATH}" NX_CMAKE_SYSROOT_PATH)
-				set(NX_STAGING_PATH_ROOT "/usr/opt/${NX_CMAKE_SYSROOT_PATH}")
-			endif()
-			set(NX_INITIALIZED_STAGING ON)
-			nx_set_global(CMAKE_STAGING_PREFIX "${NX_STAGING_PATH_DRIVE}${NX_STAGING_PATH_ROOT}")
-		endif()
-	endif()
-
-	nx_function_begin()
+	_nx_function_end()
 endfunction()
 
 nx_install_initialize()
-nx_install_prefixes()
 
 # ===================================================================
 
 function(nx_install_custom)
-	nx_function_begin()
+	_nx_function_begin()
 
-	set(lsParseModes "FILES" "DIRECTORIES" "CONTENTS" "DESTINATION" "COMPONENT")
+	if(NOT DEFINED INSTALL_TARGETS${NX_PROJECT_NAME})
+		set(bDefaultInstall OFF)
+		if(NOT DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL OR NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+			set(bDefaultInstall ON)
+		endif()
+
+		option(INSTALL_TARGETS${NX_PROJECT_NAME} "Install Targets - ${PROJECT_NAME}" ${bDefaultInstall})
+	endif()
+
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordSingle "COMPONENT" "DESTINATION")
+	set(lsKeywordMultiple "FILES" "DIRECTORIES" "CONTENTS")
+
 	set(sParseMode "FILES")
 
-	unset(NX_IC_FILES)
-	unset(NX_IC_DIRECTORIES)
-	unset(NX_IC_CONTENTS)
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	set(NX_IC_COMPONENT "DAT")
-	set(NX_IC_DESTINATION "${NX_INSTALL_PATH_DATA}")
+	# ==== PARSER END
 
-	foreach(sArgument ${ARGN})
-		if("${sArgument}" IN_LIST lsParseModes)
-			set(sParseMode "${sArgument}")
-		elseif(sParseMode STREQUAL "DESTINATION" OR sParseMode STREQUAL "COMPONENT")
-			set(NX_IC_${sParseMode} "${sArgument}")
+	if(NOT DEFINED sArgCOMPONENT)
+		set(sArgCOMPONENT "DAT")
+	endif()
+
+	if(NOT DEFINED sArgDESTINATION)
+		if(sArgCOMPONENT STREQUAL "DOC")
+			set(sArgDESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
 		else()
-			get_filename_component(sArgument "${sArgument}" ABSOLUTE)
-			list(APPEND NX_IC_${sParseMode} "${sArgument}")
+			set(sArgDESTINATION "${NX_INSTALL_PATH_DATA}")
 		endif()
-	endforeach()
+	endif()
 
 	if(INSTALL_TARGETS${NX_PROJECT_NAME})
-		if(DEFINED NX_IC_FILES AND NX_IC_FILES)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_${NX_IC_COMPONENT} ON)
+		if(DEFINED lsArgFILES)
+			nx_set(${NX_PROJECT_NAME}_COMPONENT_${sArgCOMPONENT} ON)
 			install(
-				FILES ${NX_IC_FILES}
-				COMPONENT ${NX_PROJECT_NAME}_${NX_IC_COMPONENT}
-				DESTINATION "${NX_IC_DESTINATION}")
-			foreach(sFileName ${NX_IC_FILES})
+				FILES ${lsArgFILES}
+				COMPONENT "${NX_PROJECT_NAME}_${sArgCOMPONENT}"
+				DESTINATION "${sArgDESTINATION}")
+			foreach(sFileName ${lsArgFILES})
 				get_filename_component(sFileName "${sFileName}" NAME)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_IC_DESTINATION}/${sFileName}")
+				nx_append_global(NX_CLEANUP_DELETE "${sArgDESTINATION}/${sFileName}")
 			endforeach()
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_IC_DESTINATION}")
+			nx_append_global(NX_CLEANUP_RMDIR "${sArgDESTINATION}")
 		endif()
-		foreach(sDirectory ${NX_IC_CONTENTS})
-			if(EXISTS "${sDirectory}" AND IS_DIRECTORY "${sDirectory}")
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_${NX_IC_COMPONENT} ON)
-				install(
-					DIRECTORY "${sDirectory}/"
-					COMPONENT ${NX_PROJECT_NAME}_${NX_IC_COMPONENT}
-					DESTINATION "${NX_IC_DESTINATION}")
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_IC_DESTINATION}")
-			endif()
+		foreach(sDirectory ${lsArgCONTENTS})
+			nx_set(${NX_PROJECT_NAME}_COMPONENT_${sArgCOMPONENT} ON)
+			install(
+				DIRECTORY "${sDirectory}/"
+				COMPONENT "${NX_PROJECT_NAME}_${sArgCOMPONENT}"
+				DESTINATION "${sArgDESTINATION}")
+			nx_append_global(NX_CLEANUP_RMDIR_F "${sArgDESTINATION}")
 		endforeach()
-		foreach(sDirectory ${NX_IC_DIRECTORIES})
-			if(EXISTS "${sDirectory}" AND IS_DIRECTORY "${sDirectory}")
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_${NX_IC_COMPONENT} ON)
-				install(
-					DIRECTORY "${sDirectory}"
-					COMPONENT ${NX_PROJECT_NAME}_${NX_IC_COMPONENT}
-					DESTINATION "${NX_IC_DESTINATION}")
-				get_filename_component(sDirectory "${sDirectory}" NAME)
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_IC_DESTINATION}/${sDirectory}")
-			endif()
+		foreach(sDirectory ${lsArgDIRECTORIES})
+			nx_set(${NX_PROJECT_NAME}_COMPONENT_${sArgCOMPONENT} ON)
+			install(
+				DIRECTORY "${sDirectory}"
+				COMPONENT "${NX_PROJECT_NAME}_${sArgCOMPONENT}"
+				DESTINATION "${sArgDESTINATION}")
+			get_filename_component(sDirectory "${sDirectory}" NAME)
+			nx_append_global(NX_CLEANUP_RMDIR_F "${sArgDESTINATION}/${sDirectory}")
 		endforeach()
 	endif()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
 function(nx_install_docs)
-	nx_guard_function(nx_install_docs)
-	nx_function_begin()
+	_nx_guard_function(nx_install_docs)
+	_nx_function_begin()
 
-	set(lsParseModes "LICENSE" "README" "DEVEL" "FILES" "DIRECTORIES" "CONTENTS")
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordSingle "COMPONENT" "DESTINATION")
+	set(lsKeywordMultiple "FILES" "DIRECTORIES" "CONTENTS" "READMES" "LICENSES" "DEVELOP")
+
 	set(sParseMode "FILES")
 
-	unset(NX_ID_LICENSE)
-	unset(NX_ID_README)
-	unset(NX_ID_DEVEL)
-	unset(NX_ID_FILES)
-	unset(NX_ID_DIRECTORIES)
-	unset(NX_ID_CONTENTS)
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(sArgument ${ARGN})
-		if("${sArgument}" IN_LIST lsParseModes)
-			set(sParseMode "${sArgument}")
-		else()
-			get_filename_component(sArgument "${sArgument}" ABSOLUTE)
-			list(APPEND NX_ID_${sParseMode} "${sArgument}")
-		endif()
-	endforeach()
+	# ==== PARSER END
 
-	if(NOT DEFINED NX_ID_LICENSE)
-		file(
-			GLOB NX_ID_LICENSE
-			LIST_DIRECTORIES false
-			"COPYING" "COPYING.*" "LICENSE.*" "LICENSE-*" "docs/LICENSE.*" "docs/LICENSE-*")
+	if(NOT DEFINED sArgCOMPONENT)
+		set(sArgCOMPONENT "DAT")
 	endif()
-	if(NOT DEFINED NX_ID_README)
+
+	if(NOT DEFINED sArgDESTINATION)
+		set(sArgDESTINATION "${NX_INSTALL_PATH_DATA}")
+	endif()
+
+	if(NOT DEFINED lsArgLICENSES)
 		file(
-			GLOB NX_ID_README
+			GLOB lsArgLICENSES
 			LIST_DIRECTORIES false
+			"docs/COPYING"
+			"docs/COPYING.*"
+			"docs/LICENSE"
+			"docs/LICENSE.*"
+			"docs/LICENSE-*"
+			"COPYING"
+			"COPYING.*"
+			"LICENSE"
+			"LICENSE.*"
+			"LICENSE-*")
+		if(DEFINED lsArgLICENSES AND NOT lsArgLICENSES)
+			unset(lsArgLICENSES)
+		endif()
+	endif()
+	if(DEFINED lsArgLICENSES)
+		list(GET lsArgLICENSES 0 sLicenseFile)
+		nx_set(${NX_PROJECT_NAME}_FILE_LICENSE "${sLicenseFile}")
+	endif()
+
+	if(NOT DEFINED lsArgREADMES)
+		file(
+			GLOB lsArgREADMES
+			LIST_DIRECTORIES false
+			"docs/README"
+			"docs/README.*"
+			"docs/README-*"
+			"docs/ReadMe"
+			"docs/ReadMe.*"
+			"docs/ReadMe-*"
 			"README"
 			"README.*"
 			"README-*"
 			"ReadMe"
 			"ReadMe.*"
-			"ReadMe-*"
-			"docs/README.*"
-			"docs/README-*"
-			"docs/ReadMe.*"
-			"docs/ReadMe-*")
+			"ReadMe-*")
+		if(DEFINED lsArgREADMES AND NOT lsArgREADMES)
+			unset(lsArgREADMES)
+		endif()
+	endif()
+	if(DEFINED lsArgREADMES)
+		list(GET lsArgREADMES 0 sReadmeFile)
+		nx_set(${NX_PROJECT_NAME}_FILE_README "${sReadmeFile}")
 	endif()
 
-	if(DEFINED NX_ID_LICENSE AND NX_ID_LICENSE)
-		list(GET NX_ID_LICENSE 0 ${NX_PROJECT_NAME}_FILE_LICENSE)
-		nx_set(${NX_PROJECT_NAME}_FILE_LICENSE "${${NX_PROJECT_NAME}_FILE_LICENSE}")
-	endif()
-	if(DEFINED NX_ID_README AND NX_ID_README)
-		list(GET NX_ID_README 0 ${NX_PROJECT_NAME}_FILE_README)
-		nx_set(${NX_PROJECT_NAME}_FILE_README "${${NX_PROJECT_NAME}_FILE_README}")
-	endif()
-
-	if(INSTALL_TARGETS${NX_PROJECT_NAME})
-		if(NOT DEFINED NX_ID_DEVEL)
-			file(
-				GLOB NX_ID_DEVEL
-				LIST_DIRECTORIES false
-				"BUILDING.*" "README.dev" "README-dev" "docs/BUILDING.*")
-		endif()
-		if(NOT DEFINED NX_ID_DIRECTORIES)
-			file(
-				GLOB NX_ID_DIRECTORIES
-				LIST_DIRECTORIES true
-				"docs/*")
-		endif()
-		if(NOT DEFINED NX_ID_FILES)
-			file(
-				GLOB NX_ID_FILES
-				LIST_DIRECTORIES false
-				"AUTHORS"
-				"BUGS"
-				"CHANGELOG"
-				"ChangeLog"
-				"INSTALL"
-				"NEWS"
-				"PATCHES"
-				"THANKS"
-				"TODO"
-				"VERSION"
-				"*.md"
-				"*.txt"
-				"docs/*")
-		endif()
-
-		foreach(sLicense ${NX_ID_LICENSE})
-			if("${sLicense}" IN_LIST NX_ID_FILES)
-				list(REMOVE_ITEM NX_ID_FILES "${sLicense}")
-			endif()
-		endforeach()
-		foreach(sDevReadme ${NX_ID_DEVEL})
-			if("${sDevReadme}" IN_LIST NX_ID_FILES)
-				list(REMOVE_ITEM NX_ID_FILES "${sDevReadme}")
-			endif()
-		endforeach()
-		foreach(sReadme ${NX_ID_README})
-			if("${sReadme}" IN_LIST NX_ID_FILES)
-				list(REMOVE_ITEM NX_ID_FILES "${sReadme}")
-			endif()
-		endforeach()
-		if("${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" IN_LIST NX_ID_FILES)
-			list(REMOVE_ITEM NX_ID_FILES "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt")
-		endif()
-
-		if(DEFINED NX_ID_DEVEL AND NX_ID_DEVEL)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_DEV ON)
-			install(
-				FILES ${NX_ID_DEVEL}
-				COMPONENT ${NX_PROJECT_NAME}_DEV
-				DESTINATION "${NX_INSTALL_PATHDEV_DOCUMENTATION}")
-			foreach(sFileName ${NX_ID_DEVEL})
-				get_filename_component(sFileName "${sFileName}" NAME)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHDEV_DOCUMENTATION}/${sFileName}")
-			endforeach()
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATHDEV_DOCUMENTATION}")
-		endif()
-		if(DEFINED NX_ID_LICENSE AND NX_ID_LICENSE)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_DOC ON)
-			install(
-				FILES ${NX_ID_LICENSE}
-				COMPONENT ${NX_PROJECT_NAME}_DOC
-				DESTINATION "${NX_INSTALL_PATH_LICENSES}")
-			foreach(sFileName ${NX_ID_LICENSE})
-				get_filename_component(sFileName "${sFileName}" NAME)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_LICENSES}/${sFileName}")
-			endforeach()
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_LICENSES}")
-		endif()
-		if(DEFINED NX_ID_README AND NX_ID_README)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_DOC ON)
-			install(
-				FILES ${NX_ID_README}
-				COMPONENT ${NX_PROJECT_NAME}_DOC
-				DESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
-			foreach(sFileName ${NX_ID_README})
-				get_filename_component(sFileName "${sFileName}" NAME)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_DOCUMENTATION}/${sFileName}")
-			endforeach()
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_DOCUMENTATION}")
-		endif()
-		if(DEFINED NX_ID_FILES AND NX_ID_FILES)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_DOC ON)
-			install(
-				FILES ${NX_ID_FILES}
-				COMPONENT ${NX_PROJECT_NAME}_DOC
-				DESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
-			foreach(sFileName ${NX_ID_FILES})
-				get_filename_component(sFileName "${sFileName}" NAME)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATH_DOCUMENTATION}/${sFileName}")
-			endforeach()
-			nx_append_global(NX_CLEANUP_RMDIR "${NX_INSTALL_PATH_DOCUMENTATION}")
-		endif()
-		foreach(sDirectory ${NX_ID_CONTENTS})
-			if(EXISTS "${sDirectory}" AND IS_DIRECTORY "${sDirectory}")
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_DOC ON)
-				install(
-					DIRECTORY "${sDirectory}/"
-					COMPONENT ${NX_PROJECT_NAME}_DOC
-					DESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATH_DOCUMENTATION}")
-			endif()
-		endforeach()
-		foreach(sDirectory ${NX_ID_DIRECTORIES})
-			if(EXISTS "${sDirectory}" AND IS_DIRECTORY "${sDirectory}")
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_DOC ON)
-				install(
-					DIRECTORY ${sDirectory}
-					COMPONENT ${NX_PROJECT_NAME}_DOC
-					DESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
-				get_filename_component(sDirectory "${sDirectory}" NAME)
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATH_DOCUMENTATION}/${sDirectory}")
-			endif()
-		endforeach()
+	if(NOT DEFINED lsArgDEVELOP)
+		file(
+			GLOB lsArgDEVELOP
+			LIST_DIRECTORIES false
+			"docs/BUILDING"
+			"docs/BUILDING.*"
+			"docs/CONTRIBUTING"
+			"docs/CONTRIBUTING.*"
+			"docs/HACKING"
+			"docs/HACKING.*"
+			"BUILDING"
+			"BUILDING.*"
+			"CONTRIBUTING"
+			"CONTRIBUTING.*"
+			"HACKING"
+			"HACKING.*")
 	endif()
 
-	nx_function_end()
+	if(NOT DEFINED lsArgFILES
+		AND NOT DEFINED lsArgCONTENTS
+		AND NOT DEFINED lsArgDIRECTORIES)
+		if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/docs" AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/docs")
+			list(APPEND lsArgCONTENTS "${CMAKE_CURRENT_SOURCE_DIR}/docs")
+		endif()
+
+		file(
+			GLOB lsArgDIRECTORIES
+			LIST_DIRECTORIES true
+			"docs/*")
+		if(DEFINED lsArgDIRECTORIES AND NOT lsArgDIRECTORIES)
+			unset(lsArgDIRECTORIES)
+		endif()
+
+		file(
+			GLOB lsArgFILES
+			LIST_DIRECTORIES true
+			"docs/*"
+			"AUTHORS"
+			"BUGS"
+			"CHANGELOG"
+			"ChangeLog"
+			"FAQ"
+			"INSTALL"
+			"NEWS"
+			"THANKS"
+			"TODO"
+			"*.md"
+			"*.txt")
+		if(DEFINED lsArgFILES AND NOT lsArgFILES)
+			unset(lsArgFILES)
+		endif()
+
+		if(DEFINED lsArgDIRECTORIES)
+			foreach(sDocument ${lsArgFILES})
+				if(sDocument IN_LIST lsArgDIRECTORIES)
+					list(REMOVE_ITEM lsArgDIRECTORIES "${sDocument}")
+				endif()
+			endforeach()
+		endif()
+
+		if(DEFINED lsArgFILES)
+			foreach(sDocument "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt" ${lsArgREADMES} ${lsArgLICENSES} ${lsArgDEVELOP})
+				if(sDocument IN_LIST lsArgFILES)
+					list(REMOVE_ITEM lsArgFILES "${sDocument}")
+				endif()
+			endforeach()
+		endif()
+	endif()
+
+	nx_install_custom(
+		FILES ${lsArgREADMES} ${lsArgFILES}
+		CONTENTS ${lsArgCONTENTS}
+		DIRECTORIES ${lsArgDIRECTORIES}
+		COMPONENT "DOC"
+		DESTINATION "${NX_INSTALL_PATH_DOCUMENTATION}")
+	nx_install_custom(
+		FILES ${lsArgLICENSES}
+		COMPONENT "DOC"
+		DESTINATION "${NX_INSTALL_PATH_LICENSES}")
+	nx_install_custom(
+		FILES ${lsArgDEVELOP}
+		COMPONENT "DEV"
+		DESTINATION "${NX_INSTALL_PATH_DEVELOP}")
+
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
 function(nx_install_source)
-	nx_guard_function(nx_install_source)
-	nx_function_begin()
+	_nx_guard_function(nx_install_source)
+	_nx_function_begin()
 
-	set(lsParseModes "FILES" "DIRECTORIES" "INCLUDES")
+	# PARSER START ====
+
+	_nx_parser_initialize()
+
+	set(lsKeywordMultiple "FILES" "DIRECTORIES" "INCLUDES")
+
 	set(sParseMode "FILES")
 
-	unset(NX_IS_FILES)
-	unset(NX_IS_DIRECTORIES)
-	unset(NX_IS_INCLUDES)
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
 
-	foreach(sArgument ${ARGN})
-		if("${sArgument}" IN_LIST lsParseModes)
-			set(sParseMode "${sArgument}")
-		else()
-			get_filename_component(sArgument "${sArgument}" ABSOLUTE)
-			list(APPEND NX_IS_${sParseMode} "${sArgument}")
+	# ==== PARSER END
+
+	nx_install_custom(
+		CONTENTS ${${NX_PROJECT_NAME}_DIRS_INCLUDE} ${lsArgINCLUDES}
+		COMPONENT "DEV"
+		DESTINATION "${NX_INSTALL_PATH_INCLUDE}")
+
+	foreach(sSourcePair ${${NX_PROJECT_NAME}_FILES_INTERFACE})
+		string(REPLACE "::" ";" sSourcePair "${sSourcePair}")
+		list(GET sSourcePair 1 sRelSource)
+		list(GET sSourcePair 0 sFile)
+		get_filename_component(sDestination "${NX_INSTALL_PATH_SOURCE}/${sRelSource}" DIRECTORY)
+		nx_install_custom(
+			FILES "${sFile}"
+			COMPONENT "DEV"
+			DESTINATION "${sDestination}")
+	endforeach()
+
+	foreach(sCandidate ${lsArgFILES})
+		unset(sRelSource)
+		foreach(sCandidatePath "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
+								${${NX_PROJECT_NAME}_DIRS_SOURCE})
+			file(RELATIVE_PATH sTestPath "${sCandidatePath}" "${sCandidate}")
+			string(SUBSTRING "${sTestPath}" 0 2 sTest)
+			if(NOT sTest STREQUAL ".." AND NOT sTest MATCHES ":$")
+				set(sRelSource "${sTestPath}")
+			endif()
+		endforeach()
+		if(DEFINED sRelSource)
+			get_filename_component(sDestination "${NX_INSTALL_PATH_SOURCE}/${sRelSource}" DIRECTORY)
+			nx_install_custom(
+				FILES "${sCandidate}"
+				COMPONENT "DEV"
+				DESTINATION "${sDestination}")
 		endif()
 	endforeach()
 
-	if(INSTALL_TARGETS${NX_PROJECT_NAME})
-		foreach(sInclude ${${NX_PROJECT_NAME}_DIRS_INCLUDE} ${NX_IS_INCLUDES})
-			if(EXISTS "${sInclude}")
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_DEV ON)
-				install(
-					DIRECTORY "${sInclude}/"
-					DESTINATION "${NX_INSTALL_PATHDEV_HEADERS}"
-					COMPONENT ${NX_PROJECT_NAME}_DEV
-					PATTERN "*.dox" EXCLUDE)
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATHDEV_HEADERS}")
+	foreach(sCandidate ${lsArgDIRECTORIES})
+		unset(sRelSource)
+		foreach(sCandidatePath "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
+								${${NX_PROJECT_NAME}_DIRS_SOURCE})
+			file(RELATIVE_PATH sTestPath "${sCandidatePath}" "${sCandidate}")
+			string(SUBSTRING "${sTestPath}" 0 2 sTest)
+			if(NOT sTest STREQUAL ".." AND NOT sTest MATCHES ":$")
+				set(sRelSource "${sTestPath}")
 			endif()
 		endforeach()
+		if(DEFINED sRelSource)
+			get_filename_component(sDestination "${NX_INSTALL_PATH_SOURCE}/${sRelSource}" DIRECTORY)
+			nx_install_custom(
+				DIRECTORIES "${sCandidate}"
+				COMPONENT "DEV"
+				DESTINATION "${sDestination}")
+		endif()
+	endforeach()
 
-		foreach(sSourcePair ${${NX_PROJECT_NAME}_FILES_INTERFACE})
-			string(REPLACE "::" ";" sSourcePair "${sSourcePair}")
-			list(GET sSourcePair 1 sRelSource)
-			list(GET sSourcePair 0 sFile)
-			get_filename_component(sDestination "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}" DIRECTORY)
-			nx_set(${NX_PROJECT_NAME}_COMPONENT_DEV ON)
-			install(
-				FILES "${sFile}"
-				DESTINATION "${sDestination}"
-				COMPONENT ${NX_PROJECT_NAME}_DEV)
-			nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}")
-			nx_append_global(NX_CLEANUP_RMDIR "${sDestination}")
-		endforeach()
-
-		foreach(sCandidateFile ${NX_IS_FILES})
-			unset(sRelSource)
-			foreach(sCandidatePath "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
-									${${NX_PROJECT_NAME}_DIRS_SOURCE})
-				file(RELATIVE_PATH sTestPath "${sCandidatePath}" "${sCandidateFile}")
-				string(SUBSTRING "${sTestPath}" 0 2 sTest)
-				if(NOT sTest STREQUAL ".." AND NOT sTest MATCHES ":$")
-					set(sRelSource "${sTestPath}")
-				endif()
-			endforeach()
-
-			if(DEFINED sRelSource)
-				get_filename_component(sDestination "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}" DIRECTORY)
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_DEV ON)
-				install(
-					FILES "${sCandidateFile}"
-					DESTINATION "${sDestination}"
-					COMPONENT ${NX_PROJECT_NAME}_DEV)
-				nx_append_global(NX_CLEANUP_DELETE "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}")
-				nx_append_global(NX_CLEANUP_RMDIR "${sDestination}")
-			endif()
-		endforeach()
-
-		foreach(sCandidateFile ${NX_IS_DIRECTORIES})
-			unset(sRelSource)
-			foreach(sCandidatePath "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_BINARY_DIR}"
-									${${NX_PROJECT_NAME}_DIRS_SOURCE})
-				file(RELATIVE_PATH sTestPath "${sCandidatePath}" "${sCandidateFile}")
-				string(SUBSTRING "${sTestPath}" 0 2 sTest)
-				if(NOT sTest STREQUAL ".." AND NOT sTest MATCHES ":$")
-					set(sRelSource "${sTestPath}")
-				endif()
-			endforeach()
-
-			if(DEFINED sRelSource)
-				get_filename_component(sDestination "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}" DIRECTORY)
-				nx_set(${NX_PROJECT_NAME}_COMPONENT_DEV ON)
-				install(
-					DIRECTORY "${sCandidateFile}"
-					DESTINATION "${sDestination}"
-					COMPONENT ${NX_PROJECT_NAME}_DEV)
-				nx_append_global(NX_CLEANUP_RMDIR_F "${NX_INSTALL_PATHDEV_SOURCE}/${sRelSource}")
-			endif()
-		endforeach()
-	endif()
-
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
 function(nx_install_runtime_dependencies)
-	nx_guard_function(nx_install_runtime_dependencies)
-	nx_function_begin()
+	_nx_guard_function(nx_install_runtime_dependencies)
+	_nx_function_begin()
 
-	set(bCanDepend OFF)
-	if(DEFINED ${NX_PROJECT_NAME}_TARGETS_EXECUTABLE
-		OR DEFINED ${NX_PROJECT_NAME}_TARGETS_SHARED
-		OR DEFINED ${NX_PROJECT_NAME}_TARGETS_MODULE)
-		set(bCanDepend ON)
+	if(NX_TARGET_PLATFORM_WINDOWS
+		AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.16
+		AND DEFINED INSTALL_TARGETS${NX_PROJECT_NAME})
+		set(bCanDepend OFF)
+		if(DEFINED ${NX_PROJECT_NAME}_TARGETS_EXECUTABLE
+			OR DEFINED ${NX_PROJECT_NAME}_TARGETS_SHARED
+			OR DEFINED ${NX_PROJECT_NAME}_TARGETS_MODULE)
+			set(bCanDepend ON)
+		endif()
+
+		cmake_dependent_option(INSTALL_DEPENDENCIES${NX_PROJECT_NAME} "Install Runtime Dependencies - ${PROJECT_NAME}" ON
+								"INSTALL_TARGETS${NX_PROJECT_NAME};bCanDepend" OFF)
+
+		if(INSTALL_DEPENDENCIES${NX_PROJECT_NAME})
+			unset(sTargetList)
+			unset(sSystemDirectories)
+
+			if(DEFINED ${NX_PROJECT_NAME}_TARGETS_EXECUTABLE)
+				set(sTargetList "${sTargetList}EXECUTABLES ")
+				foreach(sTargetName ${${NX_PROJECT_NAME}_TARGETS_EXECUTABLE})
+					set(sTargetList "${sTargetList}$<TARGET_FILE:${sTargetName}> ")
+				endforeach()
+			endif()
+			if(DEFINED ${NX_PROJECT_NAME}_TARGETS_SHARED OR DEFINED ${NX_PROJECT_NAME}_TARGETS_MODULE)
+				set(sTargetList "${sTargetList}LIBRARIES ")
+				foreach(sTargetName ${${NX_PROJECT_NAME}_TARGETS_SHARED} ${${NX_PROJECT_NAME}_TARGETS_MODULE})
+					set(sTargetList "${sTargetList}$<TARGET_FILE:${sTargetName}> ")
+				endforeach()
+			endif()
+
+			foreach(sPathName ${CMAKE_SYSTEM_LIBRARY_PATH} ${CMAKE_MINGW_SYSTEM_LIBRARY_PATH})
+				set(sSystemDirectories "${sSystemDirectories}\"${sPathName}\" ")
+			endforeach()
+
+			if(NOT DEFINED _CURRENT_YEAR)
+				string(TIMESTAMP _CURRENT_YEAR "%Y")
+			endif()
+			if(NOT DEFINED _CURRENT_DATE)
+				string(TIMESTAMP _CURRENT_DATE "%Y%m%d")
+			endif()
+
+			configure_file("${NXINSTALL_DIRECTORY}/NXInstallRuntimeDependencies.cmake.in"
+							"${CMAKE_CURRENT_BINARY_DIR}/NXInstall${PROJECT_NAME}Dependencies.cmake" @ONLY)
+			list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_BINARY_DIR}")
+			include(NXInstall${PROJECT_NAME}Dependencies)
+		endif()
 	endif()
 
-	nx_dependent_option(INSTALL_DEPENDENCIES_ALL "Install Runtime Dependencies" ON
-						"INSTALL_TARGETS_ALL; NX_TARGET_PLATFORM_WINDOWS; CMAKE_VERSION VERSION_GREATER_EQUAL 3.16" OFF)
-	nx_dependent_option(INSTALL_DEPENDENCIES${NX_PROJECT_NAME} "Install Runtime Dependencies - ${PROJECT_NAME}" ON
-						"INSTALL_DEPENDENCIES_ALL; INSTALL_TARGETS${NX_PROJECT_NAME}; bCanDepend" OFF)
-
-	if(INSTALL_DEPENDENCIES${NX_PROJECT_NAME})
-		unset(NX_GRD_TARGET_LIST)
-		unset(NX_GRD_SYSTEM_LIST)
-
-		if(DEFINED ${NX_PROJECT_NAME}_TARGETS_EXECUTABLE)
-			set(NX_GRD_TARGET_LIST "${NX_GRD_TARGET_LIST}EXECUTABLES ")
-			foreach(sTargetName ${${NX_PROJECT_NAME}_TARGETS_EXECUTABLE})
-				set(NX_GRD_TARGET_LIST "${NX_GRD_TARGET_LIST}$<TARGET_FILE:${sTargetName}> ")
-			endforeach()
-		endif()
-		if(DEFINED ${NX_PROJECT_NAME}_TARGETS_SHARED OR DEFINED ${NX_PROJECT_NAME}_TARGETS_MODULE)
-			set(NX_GRD_TARGET_LIST "${NX_GRD_TARGET_LIST}LIBRARIES ")
-			foreach(sTargetName ${${NX_PROJECT_NAME}_TARGETS_SHARED} ${${NX_PROJECT_NAME}_TARGETS_MODULE})
-				set(NX_GRD_TARGET_LIST "${NX_GRD_TARGET_LIST}$<TARGET_FILE:${sTargetName}> ")
-			endforeach()
-		endif()
-
-		foreach(sPathName ${CMAKE_SYSTEM_LIBRARY_PATH} ${CMAKE_MINGW_SYSTEM_LIBRARY_PATH})
-			set(NX_GRD_SYSTEM_LIST "${NX_GRD_SYSTEM_LIST}\"${sPathName}\" ")
-		endforeach()
-
-		if(NOT DEFINED _CURRENT_YEAR)
-			string(TIMESTAMP _CURRENT_YEAR "%Y")
-		endif()
-		if(NOT DEFINED _CURRENT_DATE)
-			string(TIMESTAMP _CURRENT_DATE "%Y%m%d")
-		endif()
-
-		configure_file("${NXINSTALL_DIRECTORY}/NXInstallRuntimeDependencies.cmake.in"
-						"${CMAKE_CURRENT_BINARY_DIR}/NXInstall${PROJECT_NAME}Dependencies.cmake" @ONLY)
-		list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_BINARY_DIR}")
-		include(NXInstall${PROJECT_NAME}Dependencies)
-	endif()
-
-	nx_function_end()
+	_nx_function_end()
 endfunction()

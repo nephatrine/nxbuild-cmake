@@ -16,73 +16,73 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -----------------------------*/
 
-#ifndef @NX_GEH_INCLUDE_GUARD_NAME@
-#define @NX_GEH_INCLUDE_GUARD_NAME@
+#ifndef @sArgINCLUDE_GUARD_NAME@
+#define @sArgINCLUDE_GUARD_NAME@
 
-#ifndef @NX_GEH_STATIC_DEFINE@
-#	ifndef @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#ifndef @sArgSTATIC_DEFINE@
+#	ifndef @sArgEXPORT_MACRO_NAME@_INTERNAL
 #		if defined( _WIN32 ) || defined(__CYGWIN__)
-#			ifdef @NX_GEH_DEFINE_SYMBOL@
-#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __declspec( dllexport )
+#			ifdef @sArgDEFINE_SYMBOL@
+#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __declspec( dllexport )
 #			else
-#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __declspec( dllimport )
+#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __declspec( dllimport )
 #			endif
 #		elif defined( __GNUC__ ) || defined( __clang__ )
-#			ifdef @NX_GEH_DEFINE_SYMBOL@
-#				define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL __attribute__( ( visibility( "default" ) ) )
+#			ifdef @sArgDEFINE_SYMBOL@
+#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __attribute__( ( visibility( "default" ) ) )
 #			endif
 #		endif
 #	endif
-#	ifndef @NX_GEH_NO_EXPORT_MACRO_NAME@
+#	ifndef @sArgNO_EXPORT_MACRO_NAME@
 #		if !defined( _WIN32 ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
-#			ifdef @NX_GEH_DEFINE_SYMBOL@
-#				define @NX_GEH_NO_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "hidden" ) ) )
+#			ifdef @sArgDEFINE_SYMBOL@
+#				define @sArgNO_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "hidden" ) ) )
 #			endif
 #		endif
 #	endif
 #endif
 
-#ifndef @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
-#	define @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#ifndef @sArgEXPORT_MACRO_NAME@_INTERNAL
+#	define @sArgEXPORT_MACRO_NAME@_INTERNAL
 #endif
-#ifndef @NX_GEH_EXPORT_MACRO_NAME@
-#	define @NX_GEH_EXPORT_MACRO_NAME@ @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#ifndef @sArgEXPORT_MACRO_NAME@
+#	define @sArgEXPORT_MACRO_NAME@ @sArgEXPORT_MACRO_NAME@_INTERNAL
 #endif
-#ifndef @NX_GEH_NO_EXPORT_MACRO_NAME@
-#	define @NX_GEH_NO_EXPORT_MACRO_NAME@
+#ifndef @sArgNO_EXPORT_MACRO_NAME@
+#	define @sArgNO_EXPORT_MACRO_NAME@
 #endif
 
-#ifndef @NX_GEH_EXPORT_MACRO_CNAME@
+#ifndef @sArgEXPORT_MACRO_CNAME@
 #	ifdef __cplusplus
-#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern "C" @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#		define @sArgEXPORT_MACRO_CNAME@ extern "C" @sArgEXPORT_MACRO_NAME@_INTERNAL
 #	else
-#		define @NX_GEH_EXPORT_MACRO_CNAME@ extern @NX_GEH_EXPORT_MACRO_NAME@_INTERNAL
+#		define @sArgEXPORT_MACRO_CNAME@ extern @sArgEXPORT_MACRO_NAME@_INTERNAL
 #	endif
 #endif
 
-#ifndef @NX_GEH_DEPRECATED_MACRO_NAME@
+#ifndef @sArgDEPRECATED_MACRO_NAME@
 #	if defined( __cplusplus ) && ( __cplusplus >= 201402L )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@ [[deprecated]]
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
+#		define @sArgDEPRECATED_MACRO_NAME@ [[deprecated]]
+#		define @sArgDEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
 #	elif defined( _MSC_VER )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@ __declspec( deprecated )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) __declspec( deprecated( msg ) )
+#		define @sArgDEPRECATED_MACRO_NAME@ __declspec( deprecated )
+#		define @sArgDEPRECATED_MACRO_NAME@_MSG( msg ) __declspec( deprecated( msg ) )
 #	elif defined( __GNUC__ ) || defined( __clang__ )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@ __attribute__( ( __deprecated__ ) )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) __attribute__( ( __deprecated__( msg ) ) )
+#		define @sArgDEPRECATED_MACRO_NAME@ __attribute__( ( __deprecated__ ) )
+#		define @sArgDEPRECATED_MACRO_NAME@_MSG( msg ) __attribute__( ( __deprecated__( msg ) ) )
 #	elif defined( __cplusplus ) && ( __cplusplus >= 201103L )
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@ [[deprecated]]
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
+#		define @sArgDEPRECATED_MACRO_NAME@ [[deprecated]]
+#		define @sArgDEPRECATED_MACRO_NAME@_MSG( msg ) [[deprecated( msg )]]
 #	else
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@
-#		define @NX_GEH_DEPRECATED_MACRO_NAME@_MSG( msg )
+#		define @sArgDEPRECATED_MACRO_NAME@
+#		define @sArgDEPRECATED_MACRO_NAME@_MSG( msg )
 #	endif
 #endif
 
-#if @NX_GEH_DEFINE_NO_DEPRECATED@ /* DEFINE_NO_DEPRECATED */
-#	ifndef @NX_GEH_NO_DEPRECATED_MACRO_NAME@
-#		define @NX_GEH_NO_DEPRECATED_MACRO_NAME@
+#if @bArgDEFINE_NO_DEPRECATED@ /* DEFINE_NO_DEPRECATED */
+#	ifndef @sArgNO_DEPRECATED_MACRO_NAME@
+#		define @sArgNO_DEPRECATED_MACRO_NAME@
 #	endif
 #endif
-@NX_GEH_CUSTOM_CONTENT@
-#endif // @NX_GEH_INCLUDE_GUARD_NAME@
+@sArgCUSTOM_CONTENT@
+#endif // @sArgINCLUDE_GUARD_NAME@

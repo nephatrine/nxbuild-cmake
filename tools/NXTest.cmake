@@ -16,16 +16,14 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
-# cmake-lint: disable=C0301,C0307,R0912,R0915
+# cmake-lint: disable=C0111,R0912,R0915
 
 include(NXTarget)
 
-nx_guard_file()
-
-# ===================================================================
-
-if(NOT DEFINED CMAKE_CROSSCOMPILING_EMULATOR AND NOT NX_TARGET_PLATFORM_NATIVE)
-	if(NX_TARGET_PLATFORM_WINDOWS AND (NX_TARGET_ARCHITECTURE_AMD64 OR NX_TARGET_ARCHITECTURE_IA32))
+if(NOT DEFINED CMAKE_CROSSCOMPILING_EMULATOR
+	AND NX_TARGET_PLATFORM_WINDOWS
+	AND NOT NX_TARGET_PLATFORM_NATIVE)
+	if(NX_TARGET_ARCHITECTURE_AMD64 OR NX_TARGET_ARCHITECTURE_IA32)
 		find_program(CMAKE_CROSSCOMPILING_EMULATOR NAMES "wine64" "wine")
 		if(NOT CMAKE_CROSSCOMPILING_EMULATOR)
 			unset(CMAKE_CROSSCOMPILING_EMULATOR)
@@ -34,107 +32,176 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING_EMULATOR AND NOT NX_TARGET_PLATFORM_NATIVE)
 endif()
 
 if(NX_TARGET_ARCHITECTURE_NATIVE AND NX_TARGET_PLATFORM_NATIVE)
-	set(BUILD_TESTING
-		ON
-		CACHE BOOL "Build Tests")
+	option(BUILD_TESTING "Build Test Suites" ON)
 elseif(DEFINED CMAKE_CROSSCOMPILING_EMULATOR)
-	set(BUILD_TESTING
-		ON
-		CACHE BOOL "Build Tests")
+	option(BUILD_TESTING "Build Test Suites" ON)
 else()
-	set(BUILD_TESTING
-		OFF
-		CACHE BOOL "Build Tests")
+	option(BUILD_TESTING "Build Test Suites" OFF)
 endif()
 
 include(CTest)
 
+_nx_guard_file()
+
 # ===================================================================
 
-#
-# nx_test: Create TestCase
-#
-function(nx_test var_target_list str_target_name)
-	nx_function_begin()
+function(nx_test vTargetList sTargetName)
+	_nx_function_begin()
 
-	# === Do Not Test External Projects By Default ===
+	# PARSER START ====
 
-	set(opt_default_test ON)
-	if(${NX_PROJECT_NAME}_IS_EXTERNAL)
-		set(opt_default_test OFF)
+	_nx_parser_initialize()
+
+	_nx_parser_initialize()
+
+	set(lsKeywordToggle "NO_LTO" "NO_SECURE" "USE_ASAN" "USE_MSAN" "USE_TSAN" "USE_UBSAN")
+	set(lsKeywordSingle "WORKING_DIRECTORY")
+	set(lsKeywordMultiple
+		"CMDSET"
+		"ENVIRONMENT"
+		"CFLAGS"
+		"CXXFLAGS"
+		"DEFINES"
+		"DEPENDS"
+		"FEATURES"
+		"INCLUDES"
+		"LDFLAGS"
+		"SOURCES")
+
+	set(sParseMode "SOURCES")
+
+	_nx_parser_clear()
+	_nx_parser_run(${ARGN})
+
+	# ==== PARSER END
+
+	if(NOT DEFINED bArgUSE_ASAN)
+		set(bArgUSE_ASAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_MSAN)
+		set(bArgUSE_MSAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_TSAN)
+		set(bArgUSE_TSAN OFF)
+	endif()
+	if(NOT DEFINED bArgUSE_UBSAN)
+		set(bArgUSE_UBSAN OFF)
 	endif()
 
-	nx_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${opt_default_test} "BUILD_TESTING" OFF)
+	if(NOT DEFINED bArgNO_LTO)
+		set(bArgNO_LTO OFF)
+	endif()
+	if(NOT DEFINED bArgNO_SECURE)
+		set(bArgNO_SECURE OFF)
+	endif()
+
+	unset(sNO_LTO)
+	unset(sNO_SECURE)
+
+	if(bArgNO_LTO)
+		set(sNO_LTO "NO_LTO")
+	endif()
+	if(bArgNO_SECURE)
+		set(sNO_SECURE "NO_SECURE")
+	endif()
+
+	if(NOT DEFINED sArgWORKING_DIRECTORY)
+		set(sArgWORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+	endif()
+
+	set(bDefaultTest OFF)
+	if(NOT DEFINED ${NX_PROJECT_NAME}_IS_EXTERNAL OR NOT ${NX_PROJECT_NAME}_IS_EXTERNAL)
+		set(bDefaultTest ON)
+	endif()
+
+	cmake_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${bDefaultTest} "BUILD_TESTING" OFF)
 
 	if(BUILD_TESTS${NX_PROJECT_NAME})
-
-		# === Available Parsing Modes ===
-
-		set(lst_pmode_single "WORKING_DIRECTORY")
-		set(lst_pmode_multi "CMDSET" "ENVIRONMENT" "BUILDARGS")
-
-		foreach(tmp_pmode ${lst_pmode_single} ${lst_pmode_multi})
-			string(TOLOWER "${tmp_pmode}" tmp_pmode)
-			unset(arg_test_${tmp_pmode})
-		endforeach()
-
-		set(str_pmode_cur "BUILDARGS")
-
-		# === Parse Arguments ===
-
-		foreach(tmp_argv ${ARGN})
-			if("${tmp_argv}" IN_LIST lst_pmode_single OR "${tmp_argv}" IN_LIST lst_pmode_multi)
-				set(str_pmode_cur "${tmp_argv}")
-			elseif(tmp_argv STREQUAL "--")
-				set(str_pmode_cur "BUILDARGS")
-			elseif("${str_pmode_cur}" IN_LIST lst_pmode_single)
-				string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-				if(DEFINED arg_test_${tmp_pmode})
-					message(AUTHOR_WARNING "nx_test: Option ${str_pmode_cur} Already Set")
-				else()
-					set(arg_test_${tmp_pmode} "${tmp_argv}")
-				endif()
-			elseif("${str_pmode_cur}" IN_LIST lst_pmode_multi)
-				string(TOLOWER "${str_pmode_cur}" tmp_pmode)
-				list(APPEND arg_test_${tmp_pmode} "${tmp_argv}")
-			else()
-				message(AUTHOR_WARNING "nx_test: Parse Mode ${str_pmode_cur} Unknown")
-			endif()
-		endforeach()
-
-		if(NOT DEFINED arg_test_working_directory)
-			set(arg_test_working_directory "${CMAKE_CURRENT_BINARY_DIR}")
+		unset(lsTargetTest)
+		if(bArgUSE_ASAN)
+			nx_target(
+				lsTargetTest "asan-${sTargetName}" ${sNO_LTO} ${sNO_SECURE} NO_INSTALL USE_ASAN
+				CFLAGS ${lsArgCFLAGS}
+				CXXFLAGS ${lsArgCXXFLAGS}
+				DEFINES ${lsArgDEFINES}
+				DEPENDS ${lsArgDEPENDS}
+				FEATURES ${lsArgFEATURES}
+				INCLUDES ${lsArgINCLUDES}
+				LDFLAGS ${lsArgLDFLAGS}
+				SOURCES ${lsArgSOURCES})
 		endif()
+		if(bArgUSE_MSAN)
+			nx_target(
+				lsTargetTest "msan-${sTargetName}" ${sNO_LTO} ${sNO_SECURE} NO_INSTALL USE_MSAN
+				CFLAGS ${lsArgCFLAGS}
+				CXXFLAGS ${lsArgCXXFLAGS}
+				DEFINES ${lsArgDEFINES}
+				DEPENDS ${lsArgDEPENDS}
+				FEATURES ${lsArgFEATURES}
+				INCLUDES ${lsArgINCLUDES}
+				LDFLAGS ${lsArgLDFLAGS}
+				SOURCES ${lsArgSOURCES})
+		endif()
+		if(bArgUSE_TSAN)
+			nx_target(
+				lsTargetTest "tsan-${sTargetName}" ${sNO_LTO} ${sNO_SECURE} NO_INSTALL USE_TSAN
+				CFLAGS ${lsArgCFLAGS}
+				CXXFLAGS ${lsArgCXXFLAGS}
+				DEFINES ${lsArgDEFINES}
+				DEPENDS ${lsArgDEPENDS}
+				FEATURES ${lsArgFEATURES}
+				INCLUDES ${lsArgINCLUDES}
+				LDFLAGS ${lsArgLDFLAGS}
+				SOURCES ${lsArgSOURCES})
+		endif()
+		if(bArgUSE_UBSAN)
+			nx_target(
+				lsTargetTest "ubsan-${sTargetName}" ${sNO_LTO} ${sNO_SECURE} NO_INSTALL USE_UBSAN
+				CFLAGS ${lsArgCFLAGS}
+				CXXFLAGS ${lsArgCXXFLAGS}
+				DEFINES ${lsArgDEFINES}
+				DEPENDS ${lsArgDEPENDS}
+				FEATURES ${lsArgFEATURES}
+				INCLUDES ${lsArgINCLUDES}
+				LDFLAGS ${lsArgLDFLAGS}
+				SOURCES ${lsArgSOURCES})
+		endif()
+		nx_target(
+			lsTargetTest "test-${sTargetName}" ${sNO_LTO} ${sNO_SECURE} NO_INSTALL
+			CFLAGS ${lsArgCFLAGS}
+			CXXFLAGS ${lsArgCXXFLAGS}
+			DEFINES ${lsArgDEFINES}
+			DEPENDS ${lsArgDEPENDS}
+			FEATURES ${lsArgFEATURES}
+			INCLUDES ${lsArgINCLUDES}
+			LDFLAGS ${lsArgLDFLAGS}
+			SOURCES ${lsArgSOURCES})
+		nx_append(${vTargetList} ${lsTargetTest})
 
-		# === Create Tests ===
-
-		nx_target(lst_targets_test "test-${str_target_name}" TEST ${arg_test_buildargs})
-		nx_append(${var_target_list} ${lst_targets_test})
-
-		foreach(tmp_target ${lst_targets_test})
-			foreach(tmp_cmdset ${arg_test_cmdset})
-				string(MAKE_C_IDENTIFIER "${tmp_cmdset}" tmp_suffix)
-				string(REPLACE " " ";" tmp_cmdset "${tmp_cmdset}")
+		foreach(sTargetTest ${lsTargetTest})
+			foreach(sTestArgs ${lsArgCMDSET})
+				string(MAKE_C_IDENTIFIER "${sTestArgs}" sTestSuffix)
+				string(REPLACE " " ";" lsTestArgs "${sTestArgs}")
 				add_test(
-					NAME "${tmp_target}_${tmp_suffix}"
-					WORKING_DIRECTORY "${arg_test_working_directory}"
-					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}> ${tmp_cmdset})
-				if(DEFINED arg_test_environment)
-					set_tests_properties("${tmp_target}_${tmp_suffix}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+					NAME "${sTargetTest}_${sTestSuffix}"
+					WORKING_DIRECTORY "${sArgWORKING_DIRECTORY}"
+					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${sTargetTest}> ${lsTestArgs})
+				if(DEFINED lsArgENVIRONMENT)
+					set_tests_properties("${sTargetTest}_${sTestSuffix}" PROPERTIES ENVIRONMENT ${lsArgENVIRONMENT})
 				endif()
 			endforeach()
-			if(NOT DEFINED arg_test_cmdset)
+			if(NOT DEFINED lsArgCMDSET)
 				add_test(
-					NAME "${tmp_target}"
-					WORKING_DIRECTORY "${arg_test_working_directory}"
-					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${tmp_target}>)
-				if(DEFINED arg_test_environment)
-					set_tests_properties("${tmp_target}" PROPERTIES ENVIRONMENT ${arg_test_environment})
+					NAME "${sTargetTest}"
+					WORKING_DIRECTORY "${sArgWORKING_DIRECTORY}"
+					COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR} $<TARGET_FILE:${sTargetTest}>)
+				if(DEFINED lsArgENVIRONMENT)
+					set_tests_properties("${sTargetTest}" PROPERTIES ENVIRONMENT ${lsArgENVIRONMENT})
 				endif()
 			endif()
 		endforeach()
-		unset(lst_targets_test)
+		unset(vTargetTest)
 	endif()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()

@@ -16,12 +16,13 @@
 # PERFORMANCE OF THIS SOFTWARE.
 # -------------------------------
 
+# cmake-lint: disable=C0111,R0912,R0915
+
 if(CMAKE_VERSION VERSION_LESS "3.14")
 	message(FATAL_ERROR "_NXInternals: Requires CMake 3.14+")
 endif()
 
 if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.22")
-	# cmake_dependent_option() supports full Condition Syntax
 	cmake_policy(SET CMP0127 NEW)
 endif()
 
@@ -37,37 +38,38 @@ string(MAKE_C_IDENTIFIER "_${NX_PROJECT_NAME}" NX_PROJECT_NAME)
 string(TOUPPER "${NX_INTERNAL_PROJECT}" NX_PROJECT_UPPER)
 string(TOLOWER "${NX_INTERNAL_PROJECT}" NX_PROJECT_LOWER)
 
-foreach(_NX_TEMP ${_NX_VARLISTS_RESET})
+foreach(_NX_TEMP ${NX_VARLISTS_RESET})
 	if(DEFINED ${_NX_TEMP})
 		unset(${_NX_TEMP})
 	endif()
 endforeach()
 
+include(CMakeDependentOption)
+
 # ===================================================================
 
-macro(nx_function_begin)
-	if(NOT DEFINED _NX_SCOPE_FUNCTION_ENABLED)
-		set(_NX_SCOPE_FUNCTION_ENABLED ON)
+macro(_nx_function_begin)
+	if(NOT DEFINED NX_SCOPE_FUNCTION_ENABLED)
+		set(NX_SCOPE_FUNCTION_ENABLED ON)
 	else()
-		set(_NX_SCOPE_FUNCTION_CHILD ON)
+		set(NX_SCOPE_FUNCTION_CHILD ON)
 	endif()
 endmacro()
 
-macro(nx_function_end)
-	if(_NX_SCOPE_FUNCTION_ENABLED)
-		if(DEFINED _NX_VARLISTS_SORTED AND _NX_VARLISTS_SORTED)
-			list(REMOVE_DUPLICATES _NX_VARLISTS_SORTED)
+macro(_nx_function_end)
+	if(NX_SCOPE_FUNCTION_ENABLED)
+		if(DEFINED NX_VARLISTS_SORTED AND NX_VARLISTS_SORTED)
+			list(REMOVE_DUPLICATES NX_VARLISTS_SORTED)
 		endif()
 
-		foreach(vPropagate "_NX_VARLISTS_RESET" "_NX_VARLISTS_GLOBAL" "_NX_VARLISTS_SET" "_NX_VARLISTS_LATCHED" ${_NX_VARLISTS_SORTED})
-			if(DEFINED ${vPropagate} AND ${vPropagate})
-				list(SORT ${vPropagate})
-				list(REMOVE_DUPLICATES ${vPropagate})
+		foreach(vSortedList "NX_VARLISTS_RESET" "NX_VARLISTS_GLOBAL" "NX_VARLISTS_SET" ${NX_VARLISTS_SORTED})
+			if(DEFINED ${vSortedList} AND ${vSortedList})
+				list(SORT ${vSortedList})
+				list(REMOVE_DUPLICATES ${vSortedList})
 			endif()
 		endforeach()
 
-		foreach(vPropagate "_NX_VARLISTS_RESET" "_NX_VARLISTS_GLOBAL" "_NX_VARLISTS_SORTED" ${_NX_VARLISTS_GLOBAL} ${_NX_VARLISTS_SET}
-							${_NX_VARLISTS_LATCHED})
+		foreach(vPropagate "NX_VARLISTS_RESET" "NX_VARLISTS_GLOBAL" "NX_VARLISTS_SORTED" ${NX_VARLISTS_GLOBAL} ${NX_VARLISTS_SET})
 			if(DEFINED ${vPropagate})
 				set(${vPropagate}
 					"${${vPropagate}}"
@@ -77,13 +79,13 @@ macro(nx_function_end)
 			endif()
 		endforeach()
 
-		if(DEFINED _NX_SCOPE_FUNCTION_CHILD)
-			if(DEFINED _NX_VARLISTS_SET)
-				set(_NX_VARLISTS_SET
-					"${_NX_VARLISTS_SET}"
+		if(DEFINED NX_SCOPE_FUNCTION_CHILD)
+			if(DEFINED NX_VARLISTS_SET)
+				set(NX_VARLISTS_SET
+					"${NX_VARLISTS_SET}"
 					PARENT_SCOPE)
 			else()
-				unset(_NX_VARLISTS_SET PARENT_SCOPE)
+				unset(NX_VARLISTS_SET PARENT_SCOPE)
 			endif()
 		endif()
 	endif()
@@ -92,12 +94,13 @@ endmacro()
 # ===================================================================
 
 function(nx_set vName)
-	nx_function_begin()
+	_nx_function_begin()
+
 	unset(${vName})
 
-	set(bIsCacheVar OFF)
+	set(bCacheVar OFF)
 	if(DEFINED CACHE{${vName}})
-		set(bIsCacheVar ON)
+		set(bCacheVar ON)
 		get_property(
 			sCacheType
 			CACHE ${vName}
@@ -109,31 +112,31 @@ function(nx_set vName)
 		list(APPEND ${vName} ${ARGN})
 	endif()
 
-	if(bIsCacheVar)
+	if(bCacheVar)
 		set(${vName}
 			"${${vName}}"
-			CACHE ${sCacheType} "")
+			CACHE ${sCacheType} "Oops All Berries")
 	endif()
 
 	if(vName MATCHES "^${NX_PROJECT_NAME}|_${NX_PROJECT_NAME}_")
-		list(APPEND _NX_VARLISTS_GLOBAL "${vName}")
-		# message(STATUS "Globalizing ${vName}: ${${vName}}")
+		list(APPEND NX_VARLISTS_GLOBAL "${vName}")
 	elseif(vName MATCHES "^NX_|^CPACK_|^CMAKE_")
-		list(APPEND _NX_VARLISTS_RESET "${vName}")
-		list(APPEND _NX_VARLISTS_SET "${vName}")
+		list(APPEND NX_VARLISTS_RESET "${vName}")
+		list(APPEND NX_VARLISTS_SET "${vName}")
 	else()
-		list(APPEND _NX_VARLISTS_SET "${vName}")
+		list(APPEND NX_VARLISTS_SET "${vName}")
 	endif()
-	nx_function_end()
+
+	_nx_function_end()
 endfunction()
 
 function(nx_set_global vName)
-	nx_function_begin()
+	_nx_function_begin()
 	unset(${vName})
 
-	set(bIsCacheVar OFF)
+	set(bCacheVar OFF)
 	if(DEFINED CACHE{${vName}})
-		set(bIsCacheVar ON)
+		set(bCacheVar ON)
 		get_property(
 			sCacheType
 			CACHE ${vName}
@@ -145,46 +148,32 @@ function(nx_set_global vName)
 		list(APPEND ${vName} ${ARGN})
 	endif()
 
-	if(bIsCacheVar)
+	if(bCacheVar)
 		set(${vName}
 			"${${vName}}"
-			CACHE ${sCacheType} "")
+			CACHE ${sCacheType} "Oops All Berries")
 	endif()
 
-	list(APPEND _NX_VARLISTS_GLOBAL "${vName}")
-	nx_function_end()
+	list(APPEND NX_VARLISTS_GLOBAL "${vName}")
+
+	_nx_function_end()
 endfunction()
 
-function(nx_set_latched vName)
-	nx_function_begin()
-	unset(${vName})
+function(nx_set_cache vName sValue sType sDesc)
+	_nx_function_begin()
 
-	set(bIsCacheVar OFF)
-	if(DEFINED CACHE{${vName}})
-		set(bIsCacheVar ON)
-		get_property(
-			sCacheType
-			CACHE ${vName}
-			PROPERTY TYPE)
-		unset(${vName} CACHE)
-	endif()
+	set(${vName} "${sValue}")
+	set(${vName}
+		"${sValue}"
+		CACHE ${sType} "${sDesc}" FORCE)
 
-	if(ARGC GREATER 1)
-		list(APPEND ${vName} ${ARGN})
-	endif()
+	list(APPEND NX_VARLISTS_GLOBAL "${vName}")
 
-	if(bIsCacheVar)
-		set(${vName}
-			"${${vName}}"
-			CACHE ${sCacheType} "")
-	endif()
-
-	list(APPEND _NX_VARLISTS_LATCHED "${vName}")
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 function(nx_append vName)
-	nx_function_begin()
+	_nx_function_begin()
 
 	set(bIsCacheVar OFF)
 	if(DEFINED CACHE{${vName}})
@@ -200,20 +189,19 @@ function(nx_append vName)
 		list(APPEND ${vName} ${ARGN})
 	endif()
 	if(vName MATCHES "^${NX_PROJECT_NAME}|_${NX_PROJECT_NAME}_")
-		list(APPEND _NX_VARLISTS_GLOBAL "${vName}")
-		# message(STATUS "Globalizing ${vName}: ${${vName}}")
+		list(APPEND NX_VARLISTS_GLOBAL "${vName}")
 	elseif(vName MATCHES "^NX_|^CPACK_|^CMAKE_")
-		list(APPEND _NX_VARLISTS_RESET "${vName}")
-		list(APPEND _NX_VARLISTS_SET "${vName}")
+		list(APPEND NX_VARLISTS_RESET "${vName}")
+		list(APPEND NX_VARLISTS_SET "${vName}")
 	else()
-		list(APPEND _NX_VARLISTS_SET "${vName}")
+		list(APPEND NX_VARLISTS_SET "${vName}")
 	endif()
-	list(APPEND _NX_VARLISTS_SORTED "${vName}")
-	nx_function_end()
+	list(APPEND NX_VARLISTS_SORTED "${vName}")
+	_nx_function_end()
 endfunction()
 
 function(nx_append_global vName)
-	nx_function_begin()
+	_nx_function_begin()
 
 	set(bIsCacheVar OFF)
 	if(DEFINED CACHE{${vName}})
@@ -228,33 +216,14 @@ function(nx_append_global vName)
 	if(ARGC GREATER 1)
 		list(APPEND ${vName} ${ARGN})
 	endif()
-	list(APPEND _NX_VARLISTS_GLOBAL "${vName}")
-	list(APPEND _NX_VARLISTS_SORTED "${vName}")
-	nx_function_end()
-endfunction()
-
-function(nx_latch)
-	nx_function_begin()
-	foreach(vLatch _NX_VARLISTS_GLOBAL _NX_VARLISTS_SET ${_NX_VARLISTS_GLOBAL} ${_NX_VARLISTS_SET})
-		nx_set_latched(LATCHED_${vLatch} ${${vLatch}})
-	endforeach()
-	nx_function_end()
-endfunction()
-
-function(nx_unlatch)
-	nx_function_begin()
-	foreach(vLatch _NX_VARLISTS_GLOBAL ${LATCHED_NX_VARLISTS_GLOBAL})
-		nx_set_global(${vLatch} ${LATCHED_${vLatch}})
-	endforeach()
-	foreach(vLatch _NX_VARLISTS_SET ${LATCHED_NX_VARLISTS_SET})
-		nx_set(${vLatch} ${LATCHED_${vLatch}})
-	endforeach()
-	nx_function_end()
+	list(APPEND NX_VARLISTS_GLOBAL "${vName}")
+	list(APPEND NX_VARLISTS_SORTED "${vName}")
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-macro(nx_guard_file)
+macro(_nx_guard_file)
 	get_filename_component(vIncludeGuard "${CMAKE_CURRENT_LIST_FILE}" NAME_WE)
 	string(TOUPPER "${vIncludeGuard}_FILE_GUARD" vIncludeGuard)
 	string(MAKE_C_IDENTIFIER "${vIncludeGuard}" vIncludeGuard)
@@ -266,7 +235,7 @@ macro(nx_guard_file)
 	nx_set(${vIncludeGuard} ON)
 endmacro()
 
-macro(nx_guard_function sFunctionName)
+macro(_nx_guard_function sFunctionName)
 	string(TOUPPER "${NX_PROJECT_NAME}_${sFunctionName}_GUARD" vFunctionGuard)
 	string(MAKE_C_IDENTIFIER "${vFunctionGuard}" vFunctionGuard)
 
@@ -279,65 +248,8 @@ endmacro()
 
 # ===================================================================
 
-include(CMakeDependentOption)
-
-macro(nx_option sFeature sDescription bDefault)
-	string(TOUPPER "${sFeature}" sOption)
-	string(MAKE_C_IDENTIFIER "${sOption}" sOption)
-
-	option(${sOption} "${sDescription}" ${bDefault})
-	if(COMMAND add_feature_info)
-		add_feature_info("${sFeature}" ${sOption} "${sDescription}.")
-	endif()
-endmacro()
-
-macro(nx_dependent_option sFeature sDescription bDefault lsDepends bForce)
-	string(TOUPPER "${sFeature}" sOption)
-	string(MAKE_C_IDENTIFIER "${sOption}" sOption)
-
-	cmake_dependent_option(${sOption} "${sDescription}" ${bDefault} "${lsDepends}" ${bForce})
-	if(COMMAND add_feature_info)
-		set(_NX_TEMP ON)
-		foreach(_d ${lsDepends})
-			string(REGEX REPLACE " +" ";" _d "${_d}")
-			if(${_d})
-
-			else()
-				set(_NX_TEMP OFF)
-			endif()
-		endforeach()
-		if(_NX_TEMP OR ${bForce})
-			add_feature_info("${sFeature}" ${sOption} "${sDescription}.")
-		endif()
-	endif()
-endmacro()
-
-# ===================================================================
-
-macro(nx_find_package sPackage sType sDescription)
-	find_package(${sPackage} MODULE)
-	if(COMMAND set_package_properties)
-		set_package_properties(
-			${sPackage} PROPERTIES
-			TYPE ${sType}
-			PURPOSE "${sDescription}.")
-	endif()
-endmacro()
-
-macro(nx_find_package_components sPackage lsComponents sType sDescription)
-	find_package(${sPackage} MODULE COMPONENTS ${lsComponents})
-	if(COMMAND set_package_properties)
-		set_package_properties(
-			${sPackage} PROPERTIES
-			TYPE ${sType}
-			PURPOSE "${sDescription}.")
-	endif()
-endmacro()
-
-# ===================================================================
-
 function(nx_mkpath)
-	nx_function_begin()
+	_nx_function_begin()
 
 	unset(lsDirNames)
 
@@ -363,37 +275,37 @@ function(nx_mkpath)
 		endwhile()
 	endforeach()
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
 
 # ===================================================================
 
-function(nx_string_limit vOut sIn iMaxLen)
-	nx_function_begin()
+function(nx_string_limit vOut sIn nLength)
+	_nx_function_begin()
 
 	string(MAKE_C_IDENTIFIER "${sIn}" sIn)
 	string(REGEX REPLACE "^_" "" sIn "${sIn}")
 	string(REGEX REPLACE "([a-z])([A-Z])" "\\1_\\2" sIn "${sIn}")
 
 	string(REPLACE "_" ";" lsIn "${sIn}")
-	list(LENGTH lsIn iUScore)
-	math(EXPR iMaxLen "${iMaxLen} + ${iUScore} - 1")
+	list(LENGTH lsIn nScored)
+	math(EXPR nLength "${nLength} + ${nScored} - 1")
 
-	string(LENGTH "${sIn}" iCurLen)
-	if(iCurLen GREATER ${iMaxLen})
+	string(LENGTH "${sIn}" nCurrent)
+	if(nCurrent GREATER ${nLength})
 		string(REGEX REPLACE "([AaEeIiOoUu])[AaEeIiOoUu]" "\\1" sIn "${sIn}")
 		string(REGEX REPLACE "[BbCcDdFfHhJjKkLlMmNnPpQqRrSsTtVvWwXxYyZz]([BbCcDdFfHhJjKkLlMmNnPpQqRrSsTtVvWwXxYyZz])" "\\1" sIn "${sIn}")
 
-		math(EXPR iMaxLen "${iMaxLen} - ${iUScore} + 1")
+		math(EXPR nLength "${nLength} - ${nScored} + 1")
 		string(REPLACE "_" "" sIn "${sIn}")
 
-		string(LENGTH "${sIn}" iCurLen)
-		if(iCurLen GREATER ${iMaxLen})
+		string(LENGTH "${sIn}" nCurrent)
+		if(nCurrent GREATER ${nLength})
 			string(REGEX REPLACE "[AaEeIiOoUu]" "" sIn "${sIn}")
 
-			string(LENGTH "${sIn}" iCurLen)
-			if(iCurLen GREATER ${iMaxLen})
-				string(SUBSTRING "${sIn}" 0 ${iMaxLen} sIn)
+			string(LENGTH "${sIn}" nCurrent)
+			if(nCurrent GREATER ${nLength})
+				string(SUBSTRING "${sIn}" 0 ${nLength} sIn)
 			endif()
 		endif()
 	endif()
@@ -401,5 +313,107 @@ function(nx_string_limit vOut sIn iMaxLen)
 		"${sIn}"
 		PARENT_SCOPE)
 
-	nx_function_end()
+	_nx_function_end()
 endfunction()
+
+# ===================================================================
+
+macro(_nx_parser_initialize)
+	unset(lsKeywordParse)
+	unset(lsKeywordCombo)
+	unset(lsKeywordToggle)
+	unset(lsKeywordSingle)
+	unset(lsKeywordMultiple)
+	set(sParseMode "NONE")
+
+	foreach(sCombo ${ARGN})
+		list(APPEND lsKeywordCombo "${sCombo}")
+		unset(lsKeywordToggle${sCombo})
+		unset(lsKeywordSingle${sCombo})
+		unset(lsKeywordMultiple${sCombo})
+	endforeach()
+
+	if(DEFINED lsKeywordCombo)
+		set(sComboMode "NONE")
+	else()
+		unset(sComboMode)
+	endif()
+endmacro()
+
+macro(_nx_parser_clear)
+	foreach(sKeyword ${lsKeywordToggle})
+		unset(bArg${sKeyword})
+	endforeach()
+	foreach(sKeyword ${lsKeywordSingle})
+		unset(sArg${sKeyword})
+		unset(sNext${sKeyword})
+	endforeach()
+	foreach(sKeyword ${lsKeywordMultiple})
+		unset(lsArg${sKeyword})
+	endforeach()
+	list(APPEND lsKeywordParse ${lsKeywordToggle} ${lsKeywordSingle} ${lsKeywordMultiple})
+
+	foreach(sCombo ${lsKeywordCombo})
+		unset(sDefault${sCombo})
+		foreach(sKeyword ${lsKeywordToggle${sCombo}})
+			unset(bArg${sKeyword}_${sCombo})
+		endforeach()
+		foreach(sKeyword ${lsKeywordSingle${sCombo}})
+			unset(sArg${sKeyword}_${sCombo})
+			unset(sNext${sKeyword}_${sCombo})
+		endforeach()
+		foreach(sKeyword ${lsKeywordMultiple${sCombo}})
+			unset(lsArg${sKeyword}_${sCombo})
+		endforeach()
+		list(APPEND lsKeywordParse${sCombo} ${lsKeywordToggle${sCombo}} ${lsKeywordSingle${sCombo}} ${lsKeywordMultiple${sCombo}})
+	endforeach()
+endmacro()
+
+macro(_nx_parser_run)
+	foreach(sArgument ${ARGN})
+		if(DEFINED lsKeywordCombo AND "${sArgument}" IN_LIST lsKeywordCombo)
+			set(sComboMode "${sArgument}")
+			if(DEFINED sDefault${sComboMode})
+				set(sParseMode ${sDefault${sComboMode}})
+			endif()
+		elseif(DEFINED lsKeywordToggle AND "${sArgument}" IN_LIST lsKeywordToggle)
+			if(DEFINED bArg${sArgument})
+				message(AUTHOR_WARNING "_nx_parser_run: Option ${sArgument} Already Set")
+			endif()
+			set(bArg${sArgument} 1)
+		elseif(DEFINED lsKeywordToggle${sComboMode} AND "${sArgument}" IN_LIST lsKeywordToggle${sComboMode})
+			if(DEFINED bArg${sArgument}_${sComboMode})
+				message(AUTHOR_WARNING "_nx_parser_run: Option ${sArgument}_${sComboMode} Already Set")
+			endif()
+			set(bArg${sArgument}_${sComboMode} 1)
+		elseif(DEFINED lsKeywordParse AND "${sArgument}" IN_LIST lsKeywordParse)
+			set(sParseMode "${sArgument}")
+		elseif(DEFINED lsKeywordParse${sComboMode} AND "${sArgument}" IN_LIST lsKeywordParse${sComboMode})
+			set(sParseMode "${sArgument}")
+		elseif(DEFINED lsKeywordSingle AND "${sParseMode}" IN_LIST lsKeywordSingle)
+			if(DEFINED sArg${sParseMode})
+				message(AUTHOR_WARNING "_nx_parser_run: Option ${sParseMode} Already Set")
+			endif()
+			set(sArg${sParseMode} "${sArgument}")
+			if(DEFINED sNext${sParseMode})
+				set(sParseMode "${sNext${sParseMode}}")
+			endif()
+		elseif(DEFINED lsKeywordSingle${sComboMode} AND "${sParseMode}" IN_LIST lsKeywordSingle${sComboMode})
+			if(DEFINED sArg${sParseMode}_${sComboMode})
+				message(AUTHOR_WARNING "_nx_parser_run: Option ${sParseMode}_${sComboMode} Already Set")
+			endif()
+			set(sArg${sParseMode}_${sComboMode} "${sArgument}")
+			if(DEFINED sNext${sParseMode}_${sComboMode})
+				set(sParseMode "${sNext${sParseMode}_${sComboMode}}")
+			endif()
+		elseif(DEFINED lsKeywordMultiple AND "${sParseMode}" IN_LIST lsKeywordMultiple)
+			list(APPEND lsArg${sParseMode} "${sArgument}")
+		elseif(DEFINED lsKeywordMultiple${sComboMode} AND "${sParseMode}" IN_LIST lsKeywordMultiple${sComboMode})
+			list(APPEND lsArg${sParseMode}_${sComboMode} "${sArgument}")
+		elseif(DEFINED lsKeywordCombo)
+			message(AUTHOR_WARNING "_nx_parser_run: Parse Mode ${sParseMode}_${sComboMode} Unknown")
+		else()
+			message(AUTHOR_WARNING "_nx_parser_run: Parse Mode ${sParseMode} Unknown")
+		endif()
+	endforeach()
+endmacro()
