@@ -551,7 +551,7 @@ function(nx_default_flags)
 
 	# -- Check Sanitizers --
 
-	if(NX_TARGET_PLATFORM_WINDOWS)
+	if(NX_TARGET_PLATFORM_WINDOWS OR NX_TARGET_PLATFORM_CYGWIN)
 		# c++: error: unsupported option '-fsanitize=memory' for target 'i686-w64-windows-gnu'
 		unset(lsSanitize_Memory)
 		# c++: error: unsupported option '-fsanitize=safe-stack' for target 'i686-w64-windows-gnu'
