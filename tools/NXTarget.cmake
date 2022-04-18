@@ -54,7 +54,7 @@ if(NX_TARGET_PLATFORM_WINDOWS)
 	set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS OFF)
 endif()
 
-if(NOT DEFINED NX_HOST_COMPILER_MSVC
+if(NOT NX_HOST_COMPILER_MSVC
 	AND DEFINED CMAKE_AR
 	AND DEFINED CMAKE_RANLIB)
 	if(NOT CMAKE_AR MATCHES "gcc-ar|llvm-ar")
@@ -249,8 +249,6 @@ function(nx_default_flags)
 	unset(lsSanitize_Thread)
 	unset(lsSanitize_Undefined)
 
-	unset(lsSanitize_Minimal)
-
 	if(NX_HOST_COMPILER_MSVC)
 		list(APPEND lsDiagnosticFLAGS "-W4")
 		list(APPEND lsThinCFLAGS "-GL")
@@ -314,13 +312,11 @@ function(nx_default_flags)
 		endif()
 
 		list(APPEND lsSanitize_Address "-fsanitize=address")
-		list(APPEND lsSanitize_CFI "-fsanitize=cfi" "-fsanitize-cfi-cross-dso")
+		list(APPEND lsSanitize_CFI "-fsanitize=cfi" "-fsanitize-cfi-cross-dso" "-fvisibility=hidden")
 		list(APPEND lsSanitize_Memory "-fsanitize=memory")
 		list(APPEND lsSanitize_SafeStack "-fsanitize=safe-stack")
 		list(APPEND lsSanitize_Thread "-fsanitize=thread")
 		list(APPEND lsSanitize_Undefined "-fsanitize=undefined" "-fsanitize=integer" "-fsanitize=nullability")
-
-		list(APPEND lsSanitize_Minimal "-fsanitize=undefined" "-fsanitize=integer" "-fsanitize-minimal-runtime")
 	elseif(NX_HOST_COMPILER_GNU)
 		list(
 			APPEND
@@ -370,10 +366,6 @@ function(nx_default_flags)
 			string(REPLACE "-fstack-protector" "-fstack-protector-strong" lsHardenSSP_LDFLAGS "${lsHardenSSP_LDFLAGS}")
 
 			list(APPEND lsSanitize_Undefined "-fsanitize=undefined")
-		endif()
-
-		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 5)
-			list(APPEND lsSanitize_Minimal "-fsanitize=undefined" "-fsanitize-undefined-trap-on-error")
 		endif()
 
 		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 6)
@@ -559,6 +551,15 @@ function(nx_default_flags)
 
 	# -- Check Sanitizers --
 
+	if(NX_TARGET_PLATFORM_WINDOWS)
+		# c++: error: unsupported option '-fsanitize=memory' for target 'i686-w64-windows-gnu'
+		unset(lsSanitize_Memory)
+		# c++: error: unsupported option '-fsanitize=safe-stack' for target 'i686-w64-windows-gnu'
+		unset(lsSanitize_SafeStack)
+		# c++: error: unsupported option '-fsanitize=thread' for target 'i686-w64-windows-gnu'
+		unset(lsSanitize_Thread)
+	endif()
+
 	if(DEFINED lsSanitize_Address)
 		nx_check_compiles(
 			SUPPORTS_SANITIZER_ADDRESS
@@ -619,26 +620,21 @@ function(nx_default_flags)
 		endif()
 	endif()
 
-	if(DEFINED lsSanitize_Minimal)
-		nx_check_compiles(
-			SUPPORTS_SANITIZER_MINIMAL
-			CFLAGS ${lsSanitize_Minimal}
-			LDFLAGS ${lsSanitize_Minimal})
-		if(NOT SUPPORTS_SANITIZER_MINIMAL)
-			unset(lsSanitize_Minimal)
-		endif()
-	endif()
-
-	if(DEFINED lsSanitize_Minimal AND NOT DEFINED lsSanitize_Undefined)
-		set(lsSanitize_Undefined ${lsSanitize_Minimal})
-	endif()
-
 	# -- Set Flag Variables --
 
 	if(NX_HOST_COMPILER_MSVC)
 		nx_set(NX_DEFAULT_DEFINES_GENERAL "_CRT_SECURE_NO_WARNINGS")
 	elseif(SUPPORTS_HARDEN_SSP_FLAGS)
-		nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>" "_GLIBCXX_ASSERTIONS")
+		# TODO: msys2/mingw64 + msys2/ucrt64 << internal compiler error: in seh_emit_stackalloc >>
+		if(DEFINED lsHardenCFLAGS
+			AND lsHardenCFLAGS MATCHES "fstack-clash-protection"
+			AND NX_TARGET_ARCHITECTURE_AMD64
+			AND NX_TARGET_PLATFORM_WINDOWS
+			AND NX_HOST_COMPILER_GNU)
+			nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>" "_GLIBCXX_ASSERTIONS")
+		else()
+			nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=0>")
+		endif()
 	endif()
 
 	nx_set(NX_DEFAULT_CFLAGS_DIAGNOSTIC ${lsDiagnosticFLAGS})
@@ -648,12 +644,22 @@ function(nx_default_flags)
 
 	nx_set(NX_DEFAULT_SANITIZER_CFI ${lsSanitize_CFI})
 	nx_set(NX_DEFAULT_SANITIZER_SAFESTACK ${lsSanitize_SafeStack})
-	nx_set(NX_DEFAULT_SANITIZER_MINIMAL ${lsSanitize_Minimal})
 
 	nx_set(NX_DEFAULT_SANITIZER_ADDRESS ${lsSanitize_Address})
 	nx_set(NX_DEFAULT_SANITIZER_UNDEFINED ${lsSanitize_Undefined})
 	nx_set(NX_DEFAULT_SANITIZER_MEMORY ${lsSanitize_Memory})
 	nx_set(NX_DEFAULT_SANITIZER_THREAD ${lsSanitize_Thread})
+
+	# TODO: msys2/clang32 + msys2/clang64 << undefined symbol: __stack_chk_guard >>
+	if(DEFINED lsHardenCFLAGS
+		AND lsHardenCFLAGS MATCHES "fstack-protector"
+		AND NX_TARGET_PLATFORM_WINDOWS
+		AND NX_HOST_COMPILER_CLANG)
+		unset(lsFatCFLAGS)
+		unset(lsFatLDFLAGS)
+		unset(lsThinCFLAGS)
+		unset(lsThinLDFLAGS)
+	endif()
 
 	if(NX_TARGET_BUILD_MULTI)
 		foreach(sFlag ${lsFatCFLAGS})
@@ -1315,9 +1321,7 @@ function(nx_target vTargetList sTargetName)
 		endif()
 	endif()
 	if(bArgUSE_UBSAN)
-		if(NOT DEFINED SUPPORTS_SANITIZER_UNDEFINED AND NOT DEFINED SUPPORTS_SANITIZER_MINIMAL)
-			set(bBadSanitizers ON)
-		elseif(NOT SUPPORTS_SANITIZER_UNDEFINED AND NOT SUPPORTS_SANITIZER_MINIMAL)
+		if(NOT DEFINED SUPPORTS_SANITIZER_UNDEFINED OR NOT SUPPORTS_SANITIZER_UNDEFINED)
 			set(bBadSanitizers ON)
 		else()
 			set(bGoodSanitizers ON)
@@ -1822,14 +1826,9 @@ function(nx_target vTargetList sTargetName)
 	endif()
 
 	if(NOT bArgNO_SECURE AND NOT bGoodSanitizers)
-		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK} ${NX_DEFAULT_SANITIZER_MINIMAL})
-		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK} ${NX_DEFAULT_SANITIZER_MINIMAL})
+		list(APPEND lsArgINTERNAL_CFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK})
+		list(APPEND lsArgINTERNAL_LDFLAGS ${NX_DEFAULT_SANITIZER_SAFESTACK})
 	endif()
-
-	# === General Settings ===
-
-	# TODO: msys2/clang64 << undefined symbol: __stack_chk_guard >> TODO: msys2/mingw64 << internal compiler error: in seh_emit_stackalloc
-	# >>
 
 	# === Build Executable ===
 
