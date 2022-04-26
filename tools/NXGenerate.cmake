@@ -49,13 +49,15 @@ function(nx_generate_export_header sBaseName)
 	set(lsKeywordToggle "DEFINE_NO_DEPRECATED")
 	set(lsKeywordSingle
 		"BASE_NAME"
+		"CEXPORT_MACRO_NAME"
+		"CIMPORT_MACRO_NAME"
 		"CUSTOM_CONTENT"
 		"CUSTOM_CONTENT_FROM_VARIABLE"
 		"DEFINE_SYMBOL"
 		"DEPRECATED_MACRO_NAME"
 		"EXPORT_FILE_NAME"
-		"EXPORT_MACRO_CNAME"
 		"EXPORT_MACRO_NAME"
+		"IMPORT_MACRO_NAME"
 		"INCLUDE_GUARD_NAME"
 		"NO_DEPRECATED_MACRO_NAME"
 		"NO_EXPORT_MACRO_NAME"
@@ -67,6 +69,8 @@ function(nx_generate_export_header sBaseName)
 	_nx_parser_clear()
 
 	set(sNextEXPORT_FILE_NAME "BASE_NAME")
+	set(sNextEXPORT_MACRO_NAME "CEXPORT_MACRO_NAME")
+	set(sNextIMPORT_MACRO_NAME "CIMPORT_MACRO_NAME")
 
 	_nx_parser_run(${ARGN})
 
@@ -102,12 +106,18 @@ function(nx_generate_export_header sBaseName)
 		string(TOLOWER "${sBaseName}_export.h" sArgEXPORT_FILE_NAME)
 	endif()
 
-	if(NOT DEFINED sArgEXPORT_MACRO_CNAME)
-		set(sArgEXPORT_MACRO_CNAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_CEXPORT")
-	endif()
-
 	if(NOT DEFINED sArgEXPORT_MACRO_NAME)
 		set(sArgEXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_EXPORT")
+	endif()
+	if(NOT DEFINED sArgCEXPORT_MACRO_NAME)
+		set(sArgCEXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_CEXPORT")
+	endif()
+
+	if(NOT DEFINED sArgIMPORT_MACRO_NAME)
+		set(sArgIMPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_API")
+	endif()
+	if(NOT DEFINED sArgCIMPORT_MACRO_NAME)
+		set(sArgCIMPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_CAPI")
 	endif()
 
 	if(NOT DEFINED sArgNO_DEPRECATED_MACRO_NAME)
@@ -115,14 +125,14 @@ function(nx_generate_export_header sBaseName)
 	endif()
 
 	if(NOT DEFINED sArgNO_EXPORT_MACRO_NAME)
-		set(sArgNO_EXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_NO_EXPORT")
+		set(sArgNO_EXPORT_MACRO_NAME "${sArgPREFIX_NAME}${sArgBASE_NAME}_PRIVATE")
 	endif()
 
 	if(NOT DEFINED sArgSTATIC_DEFINE)
 		if(DEFINED ${sBaseName}_STATIC_DEFINE)
 			set(sArgSTATIC_DEFINE "${${sBaseName}_STATIC_DEFINE}")
 		else()
-			set(sArgSTATIC_DEFINE "${sArgPREFIX_NAME}${sArgBASE_NAME}_STATIC_DEFINE")
+			set(sArgSTATIC_DEFINE "${sArgPREFIX_NAME}${sArgBASE_NAME}_STATIC")
 		endif()
 	endif()
 
@@ -263,7 +273,7 @@ function(nx_generate_version_header sBaseName)
 
 	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
 	if(bArgQUERY_GIT)
-		if(NOT DEFINED NX_GIT_WATCH_VARS)
+		if(NOT DEFINED NX_GITWATCH_VARS)
 			include(GitWatch)
 		endif()
 		get_filename_component(sIntermediateFile "${sArgVERSION_FILE_NAME}" NAME)

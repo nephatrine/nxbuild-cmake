@@ -19,44 +19,51 @@
 #ifndef @sArgINCLUDE_GUARD_NAME@
 #define @sArgINCLUDE_GUARD_NAME@
 
-#ifndef @sArgSTATIC_DEFINE@
-#	ifndef @sArgEXPORT_MACRO_NAME@_INTERNAL
-#		if defined( _WIN32 ) || defined(__CYGWIN__)
-#			ifdef @sArgDEFINE_SYMBOL@
-#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __declspec( dllexport )
-#			else
-#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __declspec( dllimport )
-#			endif
-#		elif defined( __GNUC__ ) || defined( __clang__ )
-#			ifdef @sArgDEFINE_SYMBOL@
-#				define @sArgEXPORT_MACRO_NAME@_INTERNAL __attribute__( ( visibility( "default" ) ) )
-#			endif
-#		endif
+#if !defined( @sArgEXPORT_MACRO_NAME@ ) && !defined( @sArgSTATIC_DEFINE@ )
+#	if defined( _WIN32 ) || defined(__CYGWIN__)
+#		define @sArgEXPORT_MACRO_NAME@ __declspec( dllexport )
+#	elif defined( __GNUC__ ) || defined( __clang__ )
+#		define @sArgEXPORT_MACRO_NAME@ __attribute__( ( visibility( "default" ) ) )
 #	endif
-#	ifndef @sArgNO_EXPORT_MACRO_NAME@
-#		if !defined( _WIN32 ) && ( defined( __GNUC__ ) || defined( __clang__ ) )
-#			ifdef @sArgDEFINE_SYMBOL@
-#				define @sArgNO_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "hidden" ) ) )
-#			endif
-#		endif
-#	endif
-#endif
-
-#ifndef @sArgEXPORT_MACRO_NAME@_INTERNAL
-#	define @sArgEXPORT_MACRO_NAME@_INTERNAL
 #endif
 #ifndef @sArgEXPORT_MACRO_NAME@
-#	define @sArgEXPORT_MACRO_NAME@ @sArgEXPORT_MACRO_NAME@_INTERNAL
+#	define @sArgEXPORT_MACRO_NAME@
+#endif
+
+#if !defined( @sArgIMPORT_MACRO_NAME@ ) && !defined( @sArgSTATIC_DEFINE@ )
+#	ifdef @sArgDEFINE_SYMBOL@
+#		define @sArgIMPORT_MACRO_NAME@ @sArgEXPORT_MACRO_NAME@
+#	elif defined( _WIN32 ) || defined(__CYGWIN__)
+#		define @sArgIMPORT_MACRO_NAME@ __declspec( dllimport )
+#	endif
+#endif
+#ifndef @sArgIMPORT_MACRO_NAME@
+#	define @sArgIMPORT_MACRO_NAME@
+#endif
+
+#if !defined( @sArgNO_EXPORT_MACRO_NAME@ ) && !defined( @sArgSTATIC_DEFINE@ )
+#	if defined( _WIN32 ) || defined(__CYGWIN__)
+#		define @sArgNO_EXPORT_MACRO_NAME@
+#	elif defined( __GNUC__ ) || defined( __clang__ )
+#		define @sArgNO_EXPORT_MACRO_NAME@ __attribute__( ( visibility( "hidden" ) ) )
+#	endif
 #endif
 #ifndef @sArgNO_EXPORT_MACRO_NAME@
 #	define @sArgNO_EXPORT_MACRO_NAME@
 #endif
 
-#ifndef @sArgEXPORT_MACRO_CNAME@
+#ifndef @sArgCEXPORT_MACRO_NAME@
 #	ifdef __cplusplus
-#		define @sArgEXPORT_MACRO_CNAME@ extern "C" @sArgEXPORT_MACRO_NAME@_INTERNAL
+#		define @sArgCEXPORT_MACRO_NAME@ extern "C" @sArgEXPORT_MACRO_NAME@
 #	else
-#		define @sArgEXPORT_MACRO_CNAME@ extern @sArgEXPORT_MACRO_NAME@_INTERNAL
+#		define @sArgCEXPORT_MACRO_NAME@ extern @sArgEXPORT_MACRO_NAME@
+#	endif
+#endif
+#ifndef @sArgCIMPORT_MACRO_NAME@
+#	ifdef __cplusplus
+#		define @sArgCIMPORT_MACRO_NAME@ extern "C" @sArgIMPORT_MACRO_NAME@
+#	else
+#		define @sArgCIMPORT_MACRO_NAME@ extern @sArgIMPORT_MACRO_NAME@
 #	endif
 #endif
 
