@@ -878,10 +878,6 @@ function(nx_install_docs)
 	if(NOT DEFINED lsArgFILES
 		AND NOT DEFINED lsArgCONTENTS
 		AND NOT DEFINED lsArgDIRECTORIES)
-		if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/docs" AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/docs")
-			list(APPEND lsArgCONTENTS "${CMAKE_CURRENT_SOURCE_DIR}/docs")
-		endif()
-
 		file(
 			GLOB lsArgDIRECTORIES
 			LIST_DIRECTORIES true
@@ -925,7 +921,7 @@ function(nx_install_docs)
 			endforeach()
 		endif()
 	endif()
-
+	
 	nx_install_custom(
 		FILES ${lsArgREADMES} ${lsArgFILES}
 		CONTENTS ${lsArgCONTENTS}
