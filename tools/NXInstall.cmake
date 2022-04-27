@@ -892,7 +892,7 @@ function(nx_install_docs)
 
 		file(
 			GLOB lsArgFILES
-			LIST_DIRECTORIES true
+			LIST_DIRECTORIES false
 			"docs/*"
 			"AUTHORS"
 			"BUGS"
