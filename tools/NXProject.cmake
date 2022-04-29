@@ -71,7 +71,8 @@ function(nx_project_begin)
 		"MAINTAINER"
 		"CONTACT"
 		"VENDOR"
-		"PRERELEASE")
+		"PRERELEASE"
+		"LICENSE")
 
 	set(lsKeywordSingleABI "VERSION" "MAJOR" "MINOR" "PATCH" "TWEAK" "COMPATIBILITY")
 	set(lsKeywordSingleAPI "VERSION" "MAJOR" "MINOR" "PATCH" "TWEAK" "COMPATIBILITY")
@@ -462,6 +463,239 @@ function(nx_project_begin)
 
 	if(COMMAND nx_install_initialize)
 		nx_install_initialize()
+	endif()
+
+	# === CPack Licenses ===
+
+	if(DEFINED sArgLICENSE)
+		if(sArgLICENSE STREQUAL "0BSD")
+			# BSD Zero Clause License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "0BSD")
+		elseif(sArgLICENSE STREQUAL "AGPL-3.0" OR sArgLICENSE STREQUAL "AGPL-3.0-only")
+			# GNU Affero General Public License v3.0
+			if(sArgLICENSE STREQUAL "AGPL-3.0")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "AGPL3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "AGPLv3")
+		elseif(sArgLICENSE STREQUAL "AGPL-3.0-or-later")
+			# GNU Affero General Public License v3.0 or later
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "AGPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "AGPLv3+")
+		elseif(sArgLICENSE STREQUAL "Apache-2.0")
+			# Apache License v2.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "Apache")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "ASL 2.0")
+		elseif(sArgLICENSE STREQUAL "Artistic-2.0")
+			# Artistic License v2.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "Artistic2.0")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "Artistic 2.0")
+		elseif(sArgLICENSE STREQUAL "BSD-2-Clause")
+			# BSD 2-Clause "Simplified" License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "BSD")
+		elseif(sArgLICENSE STREQUAL "BSD-2-Clause-Patent")
+			# BSD 2-Clause Plus Patent License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "BSD-2-Clause-Patent")
+		elseif(sArgLICENSE STREQUAL "BSD-3-Clause" OR sArgLICENSE STREQUAL "BSD-3-Clause-Clear")
+			# BSD 3-Clause "Revised" License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "BSD")
+		elseif(sArgLICENSE STREQUAL "BSD-3-Clause-Attribution")
+			# BSD 3-Clause With Attribution
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "BSD with attribution")
+		elseif(sArgLICENSE STREQUAL "BSD-4-Clause")
+			# BSD 4-Clause "Original" License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "BSD")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "BSD with advertising")
+		elseif(sArgLICENSE STREQUAL "BSL-1.0")
+			# Boost Software License v1.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "Boost")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "Boost")
+		elseif(sArgLICENSE STREQUAL "CC-BY-3.0" OR sArgLICENSE STREQUAL "CC-BY-4.0")
+			# Creative Commons Attribution v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY")
+		elseif(sArgLICENSE STREQUAL "CC-BY-NC-3.0" OR sArgLICENSE STREQUAL "CC-BY-NC-4.0")
+			# Creative Commons Attribution Non Commercial v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by-nc")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY-NC")
+		elseif(sArgLICENSE STREQUAL "CC-BY-NC-ND-3.0" OR sArgLICENSE STREQUAL "CC-BY-NC-ND-4.0")
+			# Creative Commons Attribution Non Commercial No Derivatives v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by-nc-nd")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY-NC-ND")
+		elseif(sArgLICENSE STREQUAL "CC-BY-NC-SA-3.0" OR sArgLICENSE STREQUAL "CC-BY-NC-SA-4.0")
+			# Creative Commons Attribution Non Commercial Share Alike v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by-nc-sa")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY-NC-SA")
+		elseif(sArgLICENSE STREQUAL "CC-BY-ND-3.0" OR sArgLICENSE STREQUAL "CC-BY-ND-4.0")
+			# Creative Commons Attribution No Derivatives v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by-nd")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY-ND")
+		elseif(sArgLICENSE STREQUAL "CC-BY-SA-3.0" OR sArgLICENSE STREQUAL "CC-BY-SA-4.0")
+			# Creative Commons Attribution Share Alike v3.0 Unported
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CCPL:by-sa")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CC-BY-SA")
+		elseif(sArgLICENSE STREQUAL "CDDL-1.0")
+			# Common Development & Distribution License v1.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CDDL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CDDL-1.0")
+		elseif(sArgLICENSE STREQUAL "CPL-1.0")
+			# Common Public License v1.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "CPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "CPL")
+		elseif(sArgLICENSE STREQUAL "EPL-1.0")
+			# Eclipse Public License v1.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "EPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "EPL-1.0")
+		elseif(sArgLICENSE STREQUAL "GFDL-1.2" OR sArgLICENSE STREQUAL "GFDL-1.2-only")
+			# GNU Free Documentation License v1.2
+			if(sArgLICENSE STREQUAL "GFDL-1.2")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "FDL1.2")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GFDL")
+		elseif(sArgLICENSE STREQUAL "GFDL-1.2-or-later")
+			# GNU Free Documentation License v1.2 or later
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "FDL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GFDL")
+		elseif(sArgLICENSE STREQUAL "GFDL-1.3" OR sArgLICENSE STREQUAL "GFDL-1.3-only")
+			# GNU Free Documentation License v1.3
+			if(sArgLICENSE STREQUAL "GFDL-1.3")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "FDL1.3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GFDL")
+		elseif(sArgLICENSE STREQUAL "GFDL-1.3-or-later")
+			# GNU Free Documentation License v1.3 or later
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "FDL1.3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GFDL")
+		elseif(sArgLICENSE STREQUAL "GPL-2.0" OR sArgLICENSE STREQUAL "GPL-2.0-only")
+			# GNU General Public License v2.0
+			if(sArgLICENSE STREQUAL "GPL-2.0")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "GPL2")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GPLv2")
+		elseif(sArgLICENSE STREQUAL "GPL-2.0+" OR sArgLICENSE STREQUAL "GPL-2.0-or-later")
+			# GNU General Public License v2.0 or later
+			if(sArgLICENSE STREQUAL "GPL-2.0+")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "GPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GPLv2+")
+		elseif(sArgLICENSE STREQUAL "GPL-3.0" OR sArgLICENSE STREQUAL "GPL-3.0-only")
+			# GNU General Public License v3.0
+			if(sArgLICENSE STREQUAL "GPL-3.0")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "GPL3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
+		elseif(sArgLICENSE STREQUAL "GPL-3.0+" OR sArgLICENSE STREQUAL "GPL-3.0-or-later")
+			# GNU General Public License v3.0 or later
+			if(sArgLICENSE STREQUAL "GPL-3.0+")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "GPL3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "GPLv3+")
+		elseif(sArgLICENSE STREQUAL "ISC")
+			# ISC License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "ISC")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "ISC")
+		elseif(sArgLICENSE STREQUAL "LGPL-2.1" OR sArgLICENSE STREQUAL "LGPL-2.1-only")
+			# GNU Lesser General Public License v2.1
+			if(sArgLICENSE STREQUAL "LGPL-2.1")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "LGPL2.1")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "LGPLv2")
+		elseif(sArgLICENSE STREQUAL "LGPL-2.1+" OR sArgLICENSE STREQUAL "LGPL-2.0-or-later")
+			# GNU Lesser General Public License v2.1 or later
+			if(sArgLICENSE STREQUAL "LGPL-2.1+")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "LGPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "LGPLv2+")
+		elseif(sArgLICENSE STREQUAL "LGPL-3.0" OR sArgLICENSE STREQUAL "LGPL-3.0-only")
+			# GNU Lesser General Public License v3.0
+			if(sArgLICENSE STREQUAL "LGPL-3.0")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "LGPL3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "LGPLv3")
+		elseif(sArgLICENSE STREQUAL "LGPL-3.0-or-later")
+			# GNU Lesser General Public License v3.0 or later
+			if(sArgLICENSE STREQUAL "LGPL-3.0+")
+				message(AUTHOR_WARNING "nx_project_begin: SPDX '${sArgLICENSE}' Deprecated")
+			endif()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "LGPL3")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE ":GPLv3+")
+		elseif(sArgLICENSE STREQUAL "MIT" OR sArgLICENSE STREQUAL "X11")
+			# MIT License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "MIT")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+		elseif(sArgLICENSE STREQUAL "MIT-0")
+			# MIT No Attribution License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "MIT")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "MIT-0")
+		elseif(sArgLICENSE STREQUAL "MITNFA")
+			# MIT +no-false-attribs License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "MIT")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "MITNFA")
+		elseif(sArgLICENSE STREQUAL "MPL-1.1")
+			# Mozilla Public License v1.1
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "MPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "MPLv1.1")
+		elseif(sArgLICENSE STREQUAL "MPL-2.0")
+			# Mozilla Public License v2.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "MPL2")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "MPLv2.0")
+		elseif(
+			sArgLICENSE STREQUAL "OFL-1.1"
+			OR sArgLICENSE STREQUAL "OFL-1.1-no-RFN"
+			OR sArgLICENSE STREQUAL "OFL-1.1-RFN")
+			# SIL Open Font License v1.1
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "OFL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "OFL")
+		elseif(sArgLICENSE STREQUAL "PHP-3.01")
+			# PHP License v3.01
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "PHP")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "PHP")
+		elseif(sArgLICENSE STREQUAL "Python-2.0")
+			# Python License v2.0
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "Python")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "Python")
+		elseif(sArgLICENSE STREQUAL "Ruby")
+			# Ruby License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "RUBY")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "Ruby")
+		elseif(sArgLICENSE STREQUAL "Unlicense")
+			# The Unlicense
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "Unlicense")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "Unlicense")
+		elseif(sArgLICENSE STREQUAL "W3C")
+			# W3C Software Notice & License (2002-12-31)
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "W3C")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "W3C")
+		elseif(sArgLICENSE STREQUAL "ZPL-2.1")
+			# Zope Public License v2.1
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "ZPL")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "ZPLv2.1")
+		elseif(sArgLICENSE STREQUAL "Zlib")
+			# zlib License
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "ZLIB")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "zlib")
+		elseif(sArgLICENSE STREQUAL "zlib-acknowledgement")
+			# zlib With Acknowledgement
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "ZLIB")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "zlib with acknowledgement")
+		else()
+			nx_set(CPACK_PKGBUILD_PACKAGE_LICENSE "custom:${sArgLICENSE}")
+			nx_set(CPACK_RPM_PACKAGE_LICENSE "${sArgLICENSE}")
+		endif()
 	endif()
 
 	_nx_function_end()

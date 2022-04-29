@@ -97,6 +97,7 @@ with section("parse"):
         'MAINTAINER': '*',
         'CONTACT': '*',
         'VENDOR': '*',
+        'LICENSE': '*',
         'PRERELEASE': '*',
         'ABI': '*',
         'API': '*',
@@ -406,7 +407,7 @@ with section("lint"):
 
   # regular expression pattern describing valid names for public directory
   # variables
-  public_var_pattern = 'NX_[A-Z_]+|CMAKE_[A-Z_]+'
+  public_var_pattern = 'NX_[A-Z_]+|CMAKE_[A-Z_]+|CPACK_[A-Z_]+'
 
   # regular expression pattern describing valid names for function/macro
   # arguments and loop variables.

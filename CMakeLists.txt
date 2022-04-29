@@ -37,7 +37,10 @@ include(NXInstall)
 nx_project_begin(
 	MAINTAINER "Daniel Wolf" "nephatrine@gmail.com"
 	SUPPORT "${PROJECT_HOMEPAGE_URL}/issues"
-	VENDOR "NephNET")
+	VENDOR "NephNET" LICENSE "ISC")
 
 nx_install_custom(CONTENTS tools COMPONENT DEV)
+
+# ==== FIN. ====
+
 nx_project_end()
