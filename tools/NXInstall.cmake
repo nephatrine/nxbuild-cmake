@@ -921,7 +921,7 @@ function(nx_install_docs)
 			endforeach()
 		endif()
 	endif()
-	
+
 	nx_install_custom(
 		FILES ${lsArgREADMES} ${lsArgFILES}
 		CONTENTS ${lsArgCONTENTS}
