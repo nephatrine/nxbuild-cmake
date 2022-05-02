@@ -221,7 +221,7 @@ function(nx_git_watcher)
 		foreach(vGitWatch ${NX_GITWATCH_VARS})
 			# nx_set(NX_${vGitWatch} $ENV{${vGitWatch}})
 		endforeach()
-		configure_file("${NX_GITWATCH_CONF_IN}" "${NX_GITWATCH_CONF_OUT}")
+		configure_file("${NX_GITWATCH_CONF_IN}" "${NX_GITWATCH_CONF_OUT}" NEWLINE_STYLE UNIX)
 	endif()
 
 	_nx_function_end()
@@ -263,7 +263,7 @@ function(nx_git_configure sGitInput sGitOutput)
 			-DNX_GITWATCH_STATE="${CMAKE_CURRENT_BINARY_DIR}/git.state" -DNX_GITWATCH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 			-DNX_GITWATCH_CONF_IN="${sGitInput}" -DNX_GITWATCH_CONF_OUT="${sGitOutput}" -P "${NX_GITWATCH_FILE}")
 
-	configure_file("${sGitInput}" "${sGitOutput}")
+	configure_file("${sGitInput}" "${sGitOutput}" NEWLINE_STYLE UNIX)
 
 	_nx_function_end()
 endfunction()

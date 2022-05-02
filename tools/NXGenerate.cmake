@@ -157,7 +157,8 @@ function(nx_generate_export_header sBaseName)
 	endif()
 
 	nx_mkpath("${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME}")
-	configure_file("${NXGENERATE_DIRECTORY}/NXGenerateExportHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME}")
+	configure_file("${NXGENERATE_DIRECTORY}/NXGenerateExportHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgEXPORT_FILE_NAME}"
+					NEWLINE_STYLE UNIX)
 
 	_nx_function_end()
 endfunction()
@@ -277,11 +278,12 @@ function(nx_generate_version_header sBaseName)
 			include(GitWatch)
 		endif()
 		get_filename_component(sIntermediateFile "${sArgVERSION_FILE_NAME}" NAME)
-		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeaderGit.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sIntermediateFile}.in"
-						@ONLY)
+		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeaderGit.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sIntermediateFile}.in" @ONLY
+						NEWLINE_STYLE UNIX)
 		nx_git_configure("${CMAKE_CURRENT_BINARY_DIR}/${sIntermediateFile}.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
 	else()
-		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}")
+		configure_file("${NXGENERATE_DIRECTORY}/NXGenerateVersionHeader.h.in" "${CMAKE_CURRENT_BINARY_DIR}/${sArgVERSION_FILE_NAME}"
+						NEWLINE_STYLE UNIX)
 	endif()
 
 	_nx_function_end()
