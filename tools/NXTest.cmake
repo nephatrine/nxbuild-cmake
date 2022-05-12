@@ -116,7 +116,7 @@ function(nx_test vTargetList sTargetName)
 
 	cmake_dependent_option(BUILD_TESTS${NX_PROJECT_NAME} "Build Tests - ${PROJECT_NAME}" ${bDefaultTest} "BUILD_TESTING" OFF)
 
-	if(bArgUSE_ASAN)
+	if(bArgUSE_ASAN AND NOT NX_TARGET_PLATFORM_WINDOWS)
 		if(NOT DEFINED lsArgENVIRONMENT OR NOT lsArgENVIRONMENT MATCHES "ASAN_OPTIONS")
 			list(APPEND lsArgENVIRONMENT "ASAN_OPTIONS=detect_leaks=1")
 		endif()
