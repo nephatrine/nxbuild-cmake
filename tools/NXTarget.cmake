@@ -307,8 +307,10 @@ function(nx_default_flags)
 		endif()
 
 		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 11)
-			list(APPEND lsHardenSSP_CFLAGS "-fstack-clash-protection")
-			list(APPEND lsHardenSSP_LDFLAGS "-fstack-clash-protection")
+			if(NOT NX_TARGET_PLATFORM_WINDOWS)
+				list(APPEND lsHardenSSP_CFLAGS "-fstack-clash-protection")
+				list(APPEND lsHardenSSP_LDFLAGS "-fstack-clash-protection")
+			endif()
 		endif()
 
 		list(APPEND lsSanitize_Address "-fsanitize=address")
@@ -375,15 +377,19 @@ function(nx_default_flags)
 			list(APPEND lsThinLDFLAGS ${sFatLDFLAGS})
 			list(APPEND lsFatCFLAGS "-ffat-lto-objects")
 
-			list(APPEND lsHardenSSP_CFLAGS "-fstack-check")
-			list(APPEND lsHardenSSP_LDFLAGS "-fstack-check")
+			if(NOT NX_TARGET_PLATFORM_WINDOWS)
+				list(APPEND lsHardenSSP_CFLAGS "-fstack-check")
+				list(APPEND lsHardenSSP_LDFLAGS "-fstack-check")
+			endif()
 		endif()
 
 		if(NOT NX_HOST_COMPILER_GNU_VERSION VERSION_LESS 8)
 			list(APPEND lsHardenSSP_CFLAGS "-fcf-protection")
 			list(APPEND lsHardenSSP_LDFLAGS "-fcf-protection")
-			string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_CFLAGS "${lsHardenSSP_CFLAGS}")
-			string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_LDFLAGS "${lsHardenSSP_LDFLAGS}")
+			if(NOT NX_TARGET_PLATFORM_WINDOWS)
+				string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_CFLAGS "${lsHardenSSP_CFLAGS}")
+				string(REPLACE "-fstack-check" "-fstack-clash-protection" lsHardenSSP_LDFLAGS "${lsHardenSSP_LDFLAGS}")
+			endif()
 
 			list(APPEND lsSanitize_Address "-fsanitize=pointer-compare" "-fsanitize=pointer-subtract")
 		endif()
@@ -625,28 +631,19 @@ function(nx_default_flags)
 	if(NX_HOST_COMPILER_MSVC)
 		nx_set(NX_DEFAULT_DEFINES_GENERAL "_CRT_SECURE_NO_WARNINGS")
 	elseif(SUPPORTS_HARDEN_SSP_FLAGS)
-		# TODO: msys2/mingw64 + msys2/ucrt64 << internal compiler error: in seh_emit_stackalloc >>
-		if(DEFINED lsHardenCFLAGS
-			AND lsHardenCFLAGS MATCHES "fstack-clash-protection"
-			AND NX_TARGET_ARCHITECTURE_AMD64
-			AND NX_TARGET_PLATFORM_WINDOWS
-			AND NX_HOST_COMPILER_GNU)
-			nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=0>")
-		else()
-			nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>" "_GLIBCXX_ASSERTIONS")
-		endif()
+		nx_set(NX_DEFAULT_DEFINES_HARDEN "$<$<NOT:$<CONFIG:Debug>>:_FORTIFY_SOURCE=2>" "_GLIBCXX_ASSERTIONS")
 	endif()
 
-	# TODO: msys2/clang32 + msys2/clang64 << undefined symbol: __stack_chk_guard >>
+	# TODO: https://github.com/mstorsjo/llvm-mingw/issues/275
 	if(DEFINED lsHardenCFLAGS
 		AND lsHardenCFLAGS MATCHES "fstack-protector"
 		AND NX_TARGET_PLATFORM_WINDOWS
 		AND NX_HOST_COMPILER_CLANG)
-		unset(lsFatCFLAGS)
-		unset(lsFatLDFLAGS)
-		unset(lsThinCFLAGS)
-		unset(lsThinLDFLAGS)
-		unset(lsSanitize_CFI)
+		if(NX_TARGET_ARCHITECTURE_AMD64)
+			list(APPEND lsHardenLDFLAGS "LINKER:--require-defined,__stack_chk_guard")
+		elseif(NX_TARGET_ARCHITECTURE_IA32)
+			list(APPEND lsHardenLDFLAGS "LINKER:--require-defined,___stack_chk_guard")
+		endif()
 	endif()
 
 	nx_set(NX_DEFAULT_CFLAGS_DIAGNOSTIC ${lsDiagnosticFLAGS})
@@ -2574,10 +2571,7 @@ function(nx_target vTargetList sTargetName)
 							"-out"
 							"$<TARGET_FILE:${sTarget${sType}}>.signed"
 							COMMAND
-							"${CMAKE_COMMAND}"
-							"-E"
-							"remove"
-							"$<TARGET_FILE:${sTarget${sType}}>"
+							"${CMAKE_COMMAND};-E;remove;$<TARGET_FILE:${sTarget${sType}}>"
 							COMMAND
 							"${OSSLSIGNCODE_EXECUTABLE}"
 							"sign"
@@ -2594,10 +2588,7 @@ function(nx_target vTargetList sTargetName)
 							"-out"
 							"$<TARGET_FILE:${sTarget${sType}}>"
 							COMMAND
-							"${CMAKE_COMMAND}"
-							"-E"
-							"remove"
-							"$<TARGET_FILE:${sTarget${sType}}>.signed")
+							"${CMAKE_COMMAND};-E;remove;$<TARGET_FILE:${sTarget${sType}}>.signed")
 					endif()
 				endforeach()
 			endif()
