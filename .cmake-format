@@ -97,6 +97,7 @@ with section("parse"):
         'MAINTAINER': '*',
         'CONTACT': '*',
         'VENDOR': '*',
+        'CATEGORY': '*',
         'LICENSE': '*',
         'PRERELEASE': '*',
         'ABI': '*',
