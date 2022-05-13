@@ -1,0 +1,129 @@
+Target "@CPACK_NSIS_PACKAGE_ARCHITECTURE@"
+
+;--------------------------------
+;Includes
+
+  !include "MUI2.nsh"
+  !include "WinVer.nsh"
+
+;--------------------------------
+;Variables
+
+  Var STARTMENU_FOLDER
+  Var STARTMENU_UNFOLDER
+
+;--------------------------------
+;Basics
+
+  Name "@CPACK_NSIS_PACKAGE_NAME@"
+  OutFile "@CMAKE_CURRENT_BINARY_DIR@\@CPACK_NSIS_FILE_NAME@.exe"
+  InstallDir "@CPACK_NSIS_INSTALL_ROOT@\@CPACK_PACKAGE_INSTALL_DIRECTORY@"
+  InstallDirRegKey HKCU "Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@" ""
+  RequestExecutionLevel user
+
+  SetCompressor @CPACK_NSIS_COMPRESSOR@
+
+  VIProductVersion "@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@.@CPACK_PACKAGE_VERSION_PATCH@.@CPACK_PACKAGE_VERSION_TWEAK@"
+  VIAddVersionKey "ProductName" "@CPACK_NSIS_PACKAGE_NAME@"
+  VIAddVersionKey "ProductVersion" "@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@.@CPACK_PACKAGE_VERSION_PATCH@.@CPACK_PACKAGE_VERSION_TWEAK@"
+  VIAddVersionKey "FileDescription" "@CPACK_PACKAGE_DESCRIPTION_SUMMARY@"
+  VIAddVersionKey "LegalCopyright" "Copyright © @_CURRENT_YEAR@ @CPACK_PACKAGE_MAINTAINER@"
+  VIAddVersionKey "FileVersion" "@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@.@CPACK_PACKAGE_VERSION_PATCH@.@CPACK_PACKAGE_VERSION_TWEAK@"
+
+  !define MUI_PAGE_HEADER_TEXT "@CPACK_NSIS_PACKAGE_NAME@ v@CPACK_PACKAGE_VERSION_MAJOR@.@CPACK_PACKAGE_VERSION_MINOR@"
+  !define MUI_PAGE_HEADER_SUBTEXT "<@CPACK_PACKAGE_DESCRIPTION_SUMMARY@>"
+
+  !define MUI_BGCOLOR "FFFFFF"
+  !define MUI_TEXTCOLOR "BE4D00"
+
+  !define MUI_ABORTWARNING
+
+  !define MUI_ICON "@CPACK_NSIS_MUI_ICON@"
+  !define MUI_HEADERIMAGE
+  !define MUI_HEADERIMAGE_BITMAP "@CPACK_NSIS_MUI_HEADERIMAGE@"
+  !define MUI_WELCOMEFINISHPAGE_BITMAP "@CPACK_NSIS_MUI_WELCOMEFINISHPAGE_BITMAP@"
+
+  !define MUI_UNICON "@CPACK_NSIS_MUI_UNIICON@"
+  !define MUI_UNWELCOMEFINISHPAGE_BITMAP "@CPACK_NSIS_MUI_UNWELCOMEFINISHPAGE_BITMAP@"
+
+  !define MUI_LICENSEPAGE_CHECKBOX
+
+  !define MUI_STARTMENUPAGE_REGISTRY_ROOT "SHCTX"
+  !define MUI_STARTMENUPAGE_REGISTRY_KEY "Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@"
+  !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "StartMenu"
+
+  !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\@NX_NATIVE_PATH_DOCUMENTATION@\README.md"
+  !define MUI_FINISHPAGE_LINK "Visit Project Homepage"
+  !define MUI_FINISHPAGE_LINK_LOCATION "@CPACK_NSIS_URL_INFO_ABOUT@"
+  !define MUI_FINISHPAGE_NOAUTOCLOSE
+  !define MUI_FINISHPAGE_NOREBOOTSUPPORT
+
+@sNSIS_MUI_FINISHPAGE_RUN@
+
+;--------------------------------
+;Pages
+
+  !insertmacro MUI_PAGE_WELCOME
+  !insertmacro MUI_PAGE_LICENSE "@CPACK_RESOURCE_FILE_LICENSE@"
+  !insertmacro MUI_PAGE_COMPONENTS
+  !insertmacro MUI_PAGE_DIRECTORY
+  !insertmacro MUI_PAGE_STARTMENU Application $STARTMENU_FOLDER
+  !insertmacro MUI_PAGE_INSTFILES
+  !insertmacro MUI_PAGE_FINISH
+
+  !insertmacro MUI_UNPAGE_WELCOME
+  !insertmacro MUI_UNPAGE_CONFIRM
+  !insertmacro MUI_UNPAGE_INSTFILES
+  !insertmacro MUI_UNPAGE_FINISH
+
+;--------------------------------
+;Languages
+
+  !insertmacro MUI_LANGUAGE "English"
+  !insertmacro MUI_LANGUAGE "French"
+  !insertmacro MUI_LANGUAGE "German"
+  !insertmacro MUI_LANGUAGE "Italian"
+  !insertmacro MUI_LANGUAGE "Japanese"
+  !insertmacro MUI_LANGUAGE "Korean"
+  !insertmacro MUI_LANGUAGE "Polish"
+  !insertmacro MUI_LANGUAGE "Russian"
+  !insertmacro MUI_LANGUAGE "Spanish"
+
+;--------------------------------
+;Data Files
+
+@sNSIS_LaunchApplication@
+
+Section "-Default Installation"
+  SetOutPath "$INSTDIR"
+  WriteUninstaller "$INSTDIR\@CPACK_NSIS_UNINSTALL_NAME@.exe"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "DisplayName" "@CPACK_NSIS_DISPLAY_NAME@"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "DisplayVersion" "@CPACK_PACKAGE_VERSION@"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "Publisher" "@CPACK_PACKAGE_VENDOR@"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "UninstallString" "$INSTDIR\@CPACK_NSIS_UNINSTALL_NAME@.exe"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "NoRepair" "1"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "NoModify" "1"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "HelpLink" "@CPACK_NSIS_HELP_LINK@"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "URLInfoAbout" "@CPACK_NSIS_URL_INFO_ABOUT@"
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "Contact" "@CPACK_NSIS_CONTACT@"
+  @CPACK_NSIS_EXTRA_PREINSTALL_COMMANDS@
+@sNSISRoutine_Install@
+  !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
+  CreateDirectory "$SMPROGRAMS\$STARTMENU_FOLDER"
+  CreateShortCut "$SMPROGRAMS\$STARTMENU_FOLDER\Uninstall @CPACK_NSIS_PACKAGE_NAME@.lnk" "$INSTDIR\@CPACK_NSIS_UNINSTALL_NAME@.exe"
+@sNSIS_CreateShortCut@
+  WriteRegStr SHCTX "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@" "StartMenu" "$STARTMENU_FOLDER"
+  !insertmacro MUI_STARTMENU_WRITE_END
+SectionEnd
+Section "Uninstall"
+  !insertmacro MUI_STARTMENU_GETFOLDER Application $STARTMENU_UNFOLDER
+  Delete "$SMPROGRAMS\$STARTMENU_UNFOLDER\Uninstall @CPACK_NSIS_PACKAGE_NAME@.lnk"
+@sNSIS_DeleteShortCut@
+  RMDir "$SMPROGRAMS\$STARTMENU_UNFOLDER"
+  @CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS@
+  DeleteRegKey /ifempty HKCU "Software\@CPACK_PACKAGE_VENDOR@\@CPACK_PACKAGE_INSTALL_REGISTRY_KEY@"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\@CPACK_NSIS_PACKAGE_NAME@"
+
+  Delete "$INSTDIR\@CPACK_NSIS_UNINSTALL_NAME@.exe"
+@sNSISRoutine_Uninstall@
+SectionEnd

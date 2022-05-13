@@ -1,0 +1,53 @@
+# Maintainer: @CPACK_PKGBUILD_PACKAGE_MAINTAINER@
+
+pkgbase=@CPACK_PKGBUILD_PACKAGE_SOURCE@
+pkgname=(@sPKGBuild_Packages@)
+pkgver=@CPACK_PKGBUILD_PACKAGE_VERSION@
+pkgrel=@CPACK_PKGBUILD_PACKAGE_RELEASE@
+pkgdesc='@CPACK_PACKAGE_DESCRIPTION_SUMMARY@ (msys)'
+arch=('@CPACK_PKGBUILD_PACKAGE_ARCHITECTURE@')
+url='@CPACK_PKGBUILD_PACKAGE_HOMEPAGE@'
+license=('@CPACK_PKGBUILD_PACKAGE_LICENSE@')
+depends=(@CPACK_PKGBUILD_PACKAGE_DEPENDS@)
+optdepends=(@CPACK_PKGBUILD_PACKAGE_OPTIONAL@)
+makedepends=(@CPACK_PKGBUILD_BUILDREQUIRES@)
+options=('strip' 'staticlibs')
+source=('@CPACK_SOURCE_PACKAGE_FILE_NAME@.tar.gz')
+sha256sums=('SKIP')
+
+prepare() {
+  cd "${srcdir}/@CPACK_SOURCE_PACKAGE_FILE_NAME@"
+}
+
+build() {
+  [[ -d "${srcdir}/build-${CARCH}" ]] && rm -rf "${srcdir}/build-${CARCH}"
+  mkdir -p "${srcdir}/build-${CARCH}" && cd "${srcdir}/build-${CARCH}"
+
+  declare -a extra_config
+  if check_option "debug" "n"; then
+    extra_config+=("-DCMAKE_BUILD_TYPE=@CMAKE_BUILD_TYPE@")
+  else
+    extra_config+=("-DCMAKE_BUILD_TYPE=Debug")
+  fi
+
+  if which ninja 2>/dev/null; then
+    SHAIHULUD=Ninja
+  else
+    SHAIHULUD="Unix Makefiles"
+  fi
+
+  MSYS2_ARG_CONV_EXCL="-DCMAKE_INSTALL_PREFIX=" cmake -G "${SHAIHULUD}" -DNXINSTALL_IS_SYSTEM=ON -DCMAKE_INSTALL_PREFIX=${MSYSTEM_PREFIX} -DCPACK_GENERATOR=External -DCPACK_SOURCE_GENERATOR=TGZ "${extra_config[@]}" "${srcdir}/@CPACK_SOURCE_PACKAGE_FILE_NAME@"
+  cmake --build .
+}
+
+check() {
+  cd "${srcdir}/build-${CARCH}"
+  if [[ -e CTestTestfile.cmake ]]; then
+    cmake --build . --target test
+  fi
+}
+
+@sPKGBuild_PackageTag@() {
+  cd "${srcdir}/build-${CARCH}"
+  DESTDIR="${pkgdir}" cmake --build . --target install
+}

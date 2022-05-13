@@ -1,0 +1,4 @@
+Section @sNSISComponent_Disabled@ "@sNSISComponent_Name@" @sNSISComponent_Tag@ @sNSISComponent_Required@
+  SetOutPath "$INSTDIR"
+  File /r "@sNSISComponent_SourceDir@\*.*"
+SectionEnd

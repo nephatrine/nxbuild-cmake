@@ -1,0 +1,8 @@
+package_@sPKGBuildComponent_Name@() {
+  arch=('@sPKGBuildComponent_Architecture@')
+  depends=(@sPKGBuildComponent_Depends@)
+  optdepends=(@sPKGBuildComponent_Optional@)
+  cd "${srcdir}/build-${CARCH}"
+  cmake --build . --target package
+  cp -av @sPKGBuildComponent_SourceDir@/. "${pkgdir}/"
+}

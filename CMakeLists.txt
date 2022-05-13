@@ -31,15 +31,24 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/tools")
 include(NXProject)
 include(NXFormat)
 include(NXInstall)
+include(NXPackage)
 
 # ==== NXBuild Project ====
 
 nx_project_begin(
+	CATEGORY "Development/Tools/Building"
 	MAINTAINER "Daniel Wolf" "nephatrine@gmail.com"
 	SUPPORT "${PROJECT_HOMEPAGE_URL}/issues"
-	VENDOR "NephNET" LICENSE "ISC")
+	VENDOR "NephNET"
+	LICENSE "ISC")
 
 nx_install_custom(CONTENTS tools COMPONENT DEV)
+
+# cmake-lint: disable=W0106
+nx_append(NX_DEBIAN_PACKAGE_REQUIRES "cmake (>= 3.14)")
+nx_append(NX_PKGBUILD_PACKAGE_REQUIRES "cmake>=3.14")
+nx_append(NX_MINGW_PACKAGE_REQUIRES "\${MINGW_PACKAGE_PREFIX}-cmake>=3.14")
+nx_append(NX_RPM_PACKAGE_REQUIRES "cmake >= 3.14")
 
 # ==== FIN. ====
 
