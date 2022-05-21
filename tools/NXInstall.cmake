@@ -69,25 +69,72 @@ function(nx_install_set_subdir sSubDir)
 
 	unset(sLibraryPath)
 	unset(sLibrarySuffix)
+	unset(sLibraryCross)
 
-	if(NX_TARGET_PLATFORM_ANDROID)
+	unset(sDataCross)
+
+	if(DEFINED NX_INSTALL_CROSS AND NX_INSTALL_CROSS)
+		if(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
+			set(sDataCross "${CMAKE_LIBRARY_ARCHITECTURE}")
+		elseif(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_TARGET)
+			set(sDataCross "${CMAKE_CXX_COMPILER_TARGET}")
+		elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_TARGET)
+			set(sDataCross "${CMAKE_C_COMPILER_TARGET}")
+		else()
+			set(sDataCross "${NX_TARGET_ARCHITECTURE_STRING}-${NX_TARGET_PLATFORM_STRING}")
+		endif()
+	endif()
+
+	if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		unset(sDataCross)
+	elseif(NX_TARGET_PLATFORM_ANDROID)
 		if(DEFINED ANDROID_ABI)
 			set(sLibraryPath "${ANDROID_ABI}")
 		endif()
-	elseif(NX_TARGET_PLATFORM_MSDOS)
-		if(NX_TARGET_ARCHITECTURE_IA32)
-			set(sLibrarySuffix "32")
-		endif()
+	elseif(NX_TARGET_PLATFORM_MSDOS AND NX_TARGET_ARCHITECTURE_IA32)
+		set(sLibrarySuffix "32")
 	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
-	elseif(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		if(NX_TARGET_ARCHITECTURE_AMD64)
+			set(sLibraryPath "x64")
+		elseif(NX_TARGET_ARCHITECTURE_IA32)
+			set(sLibraryPath "x86")
+		elseif(NX_TARGET_ARCHITECTURE_ARMV7)
+			set(sLibraryPath "arm")
+		elseif(NX_TARGET_ARCHITECTURE_ARM64)
+			set(sLibraryPath "arm64")
+		else()
+			set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		endif()
 	elseif(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
 		set(sLibraryPath "${CMAKE_LIBRARY_ARCHITECTURE}")
+	elseif(
+		NX_TARGET_ARCHITECTURE_AMD64
+		AND DEFINED NX_INSTALL_CROSS
+		AND NX_INSTALL_CROSS)
+		set(sLibrarySuffix "64")
 	elseif(NX_TARGET_ARCHITECTURE_AMD64 AND NX_TARGET_PLATFORM_LINUX)
 		set(sLibrarySuffix "64")
+	elseif(
+		NX_TARGET_ARCHITECTURE_IA32
+		AND DEFINED NX_INSTALL_CROSS
+		AND NX_INSTALL_CROSS)
+		set(sLibrarySuffix "32")
 	elseif(NX_TARGET_ARCHITECTURE_IA32 AND NX_TARGET_PLATFORM_FREEBSD)
 		set(sLibrarySuffix "32")
+	endif()
+
+	if(DEFINED sDataCross)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sDataCross "${sDataCross}" 8)
+			string(TOUPPER "${sDataCross}" sDataCross)
+		elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
+			string(TOLOWER "${sDataCross}" sDataCross)
+		endif()
+		set(sDataCross "${sDataCross}/")
+		if(NOT DEFINED sLibrarySuffix AND NOT DEFINED sLibrarySuffix)
+			set(sLibraryCross "${sDataCross}")
+		endif()
 	endif()
 
 	if(DEFINED sLibraryPath)
@@ -112,32 +159,32 @@ function(nx_install_set_subdir sSubDir)
 		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sSubDir}")
 	elseif(NX_TARGET_PLATFORM_HAIKU)
 		# <root>/data/myApplication/Addon1
-		nx_set(NX_INSTALL_PATH_DATA "data/${sApplicationName}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}data/${sApplicationName}${sSubDir}")
 		# <root>/lib##/myApplication/<arch>/Addon1
-		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
 		# <root>/settings/myApplication/Addon1
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "settings/${sApplicationName}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}settings/${sApplicationName}${sSubDir}")
 	elseif(NX_TARGET_PLATFORM_MSDOS)
 		# installdir>/DATA/ADDON1
-		nx_set(NX_INSTALL_PATH_DATA "DATA${sSubDir}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}DATA${sSubDir}")
 		# <installdir>/LIB##/<arch>/ADDON1
-		nx_set(NX_INSTALL_PATH_MODULES "LIB${sLibrarySuffix}${sLibraryPath}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}LIB${sLibrarySuffix}${sLibraryPath}${sSubDir}")
 		# <installdir>/ETC/ADDON1
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "ETC${sSubDir}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}ETC${sSubDir}")
 	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
 		# <installdir>/Data/Addon1
-		nx_set(NX_INSTALL_PATH_DATA "Data${sSubDir}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}Data${sSubDir}")
 		# <installdir>/Modules##/<arch>/Addon1
-		nx_set(NX_INSTALL_PATH_MODULES "Modules${sLibrarySuffix}${sLibraryPath}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}Modules${sLibrarySuffix}${sLibraryPath}${sSubDir}")
 		# <installdir>/Settings/Addon1
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "Settings${sSubDir}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}Settings${sSubDir}")
 	else()
 		# <root>/share/myapplication/addon1
-		nx_set(NX_INSTALL_PATH_DATA "share/${sApplicationName}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}share/${sApplicationName}${sSubDir}")
 		# <root>/lib##/myapplication/<arch>/addon1
-		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}${sSubDir}")
 		# <root>/etc/myapplication/addon1
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "etc/${sApplicationName}${sSubDir}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}etc/${sApplicationName}${sSubDir}")
 	endif()
 
 	if(NOT DEFINED NX_INSTALL_PATH_MODULES)
@@ -215,32 +262,87 @@ function(nx_install_initialize)
 
 	unset(sBinaryPath)
 	unset(sBinarySuffix)
+	unset(sBinaryCross)
 
 	unset(sLibraryPath)
 	unset(sLibrarySuffix)
+	unset(sLibraryCross)
 
-	if(NX_TARGET_PLATFORM_ANDROID)
+	unset(sDataCross)
+
+	if(DEFINED NX_INSTALL_CROSS AND NX_INSTALL_CROSS)
+		if(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
+			set(sDataCross "${CMAKE_LIBRARY_ARCHITECTURE}")
+		elseif(NX_HOST_LANGUAGE_CXX AND DEFINED CMAKE_CXX_COMPILER_TARGET)
+			set(sDataCross "${CMAKE_CXX_COMPILER_TARGET}")
+		elseif(NX_HOST_LANGUAGE_C AND DEFINED CMAKE_C_COMPILER_TARGET)
+			set(sDataCross "${CMAKE_C_COMPILER_TARGET}")
+		else()
+			set(sDataCross "${NX_TARGET_PLATFORM_STRING}-${NX_TARGET_ARCHITECTURE_STRING}")
+		endif()
+	endif()
+
+	if(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
+		set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		unset(sDataCross)
+	elseif(NX_TARGET_PLATFORM_ANDROID)
 		if(DEFINED ANDROID_ABI)
 			set(sBinaryPath "${ANDROID_ABI}")
 			set(sLibraryPath "${ANDROID_ABI}")
 		endif()
-	elseif(NX_TARGET_PLATFORM_MSDOS)
-		if(NX_TARGET_ARCHITECTURE_IA32)
-			set(sBinarySuffix "32")
-			set(sLibrarySuffix "32")
-		endif()
+	elseif(NX_TARGET_PLATFORM_MSDOS AND NX_TARGET_ARCHITECTURE_IA32)
+		set(sBinarySuffix "32")
+		set(sLibrarySuffix "32")
 	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
-		set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
-		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
-	elseif(DEFINED NX_INSTALL_OPT AND NX_INSTALL_OPT)
-		set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
-		set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		if(NX_TARGET_ARCHITECTURE_AMD64)
+			set(sBinaryPath "x64")
+			set(sLibraryPath "x64")
+		elseif(NX_TARGET_ARCHITECTURE_IA32)
+			set(sBinaryPath "x86")
+			set(sLibraryPath "x86")
+		elseif(NX_TARGET_ARCHITECTURE_ARMV7)
+			set(sBinaryPath "arm")
+			set(sLibraryPath "arm")
+		elseif(NX_TARGET_ARCHITECTURE_ARM64)
+			set(sBinaryPath "arm64")
+			set(sLibraryPath "arm64")
+		else()
+			set(sBinaryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+			set(sLibraryPath "${NX_TARGET_ARCHITECTURE_STRING}")
+		endif()
 	elseif(DEFINED CMAKE_LIBRARY_ARCHITECTURE)
 		set(sLibraryPath "${CMAKE_LIBRARY_ARCHITECTURE}")
+	elseif(
+		NX_TARGET_ARCHITECTURE_AMD64
+		AND DEFINED NX_INSTALL_CROSS
+		AND NX_INSTALL_CROSS)
+		set(sLibrarySuffix "64")
 	elseif(NX_TARGET_ARCHITECTURE_AMD64 AND NX_TARGET_PLATFORM_LINUX)
 		set(sLibrarySuffix "64")
+	elseif(
+		NX_TARGET_ARCHITECTURE_IA32
+		AND DEFINED NX_INSTALL_CROSS
+		AND NX_INSTALL_CROSS)
+		set(sLibrarySuffix "32")
 	elseif(NX_TARGET_ARCHITECTURE_IA32 AND NX_TARGET_PLATFORM_FREEBSD)
 		set(sLibrarySuffix "32")
+	endif()
+
+	if(DEFINED sDataCross)
+		if(NX_TARGET_PLATFORM_MSDOS)
+			nx_string_limit(sDataCross "${sDataCross}" 8)
+			string(TOUPPER "${sDataCross}" sDataCross)
+		elseif(NX_TARGET_PLATFORM_POSIX OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
+			string(TOLOWER "${sDataCross}" sDataCross)
+		endif()
+		set(sDataCross "${sDataCross}/")
+		if(NOT DEFINED sBinarySuffix AND NOT DEFINED sBinarySuffix)
+			set(sBinaryCross "${sDataCross}")
+		endif()
+		if(NOT DEFINED sLibrarySuffix AND NOT DEFINED sLibrarySuffix)
+			set(sLibraryCross "${sDataCross}")
+		endif()
 	endif()
 
 	if(DEFINED sBinaryPath)
@@ -447,6 +549,8 @@ function(nx_install_initialize)
 				nx_set_global(NX_INITIALIZED_STAGING ON)
 				nx_set_cache(CMAKE_STAGING_PREFIX "${CMAKE_OSX_SYSROOT}${NX_INSTALL_PATH_BASE}" PATH "Staging Prefix")
 				nx_set_cache(NXINSTALL_CMAKE_STAGING_PREFIX "${CMAKE_OSX_SYSROOT}${NX_INSTALL_PATH_BASE}" INTERNAL "")
+			elseif(DEFINED NX_INSTALL_CROSS AND NX_INSTALL_CROSS)
+				# intentionally blank
 			elseif(NOT NX_TARGET_PLATFORM_NATIVE OR NOT NX_TARGET_ARCHITECTURE_NATIVE)
 				string(TOLOWER "${NX_TARGET_PLATFORM_STRING}-${NX_TARGET_ARCHITECTURE_STRING}" sSysrootName)
 				set(sSysrootPath "${sStagingPath}/sysroots/${sSysrootName}")
@@ -505,127 +609,127 @@ function(nx_install_initialize)
 		nx_set(NX_INSTALL_PATH_PKGSRC "pkg")
 	elseif(NX_TARGET_PLATFORM_HAIKU)
 		# <root>/apps##/<arch>/myApplication
-		nx_set(NX_INSTALL_PATH_APPLICATIONS "apps${sBinarySuffix}${sBinaryPath}/${sApplicationName}")
+		nx_set(NX_INSTALL_PATH_APPLICATIONS "${sBinaryCross}apps${sBinarySuffix}${sBinaryPath}/${sApplicationName}")
 		# <root>/bin##/<arch>
-		nx_set(NX_INSTALL_PATH_BINARIES "bin${sBinarySuffix}${sBinaryPath}")
+		nx_set(NX_INSTALL_PATH_BINARIES "${sBinaryCross}bin${sBinarySuffix}${sBinaryPath}")
 		# <root>/lib##/<arch>
-		nx_set(NX_INSTALL_PATH_LIBRARIES "lib${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_LIBRARIES "${sLibraryCross}lib${sLibrarySuffix}${sLibraryPath}")
 		# <root>/servers##/<arch>
-		nx_set(NX_INSTALL_PATH_DAEMONS "servers${sBinarySuffix}${sBinaryPath}")
+		nx_set(NX_INSTALL_PATH_DAEMONS "${sBinaryCross}servers${sBinarySuffix}${sBinaryPath}")
 
 		# <root>/data/myApplication
-		nx_set(NX_INSTALL_PATH_DATA "data/${sApplicationName}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}data/${sApplicationName}")
 		# <root>/lib##/myApplication/<arch>
-		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
 		# <root>/settings/myApplication
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "settings/${sApplicationName}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}settings/${sApplicationName}")
 
 		# <root>/data/myApplication-Addon1
-		nx_set(NX_INSTALL_PATH_LOCALDATA "data${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_LOCALDATA "${sDataCross}data${sProjectDir}")
 		# <root>/documentation/packages/myApplication-Addon1
-		nx_set(NX_INSTALL_PATH_DOCUMENTATION "documentation/packages${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "${sDataCross}documentation/packages${sProjectDir}")
 
 		# <root>/develop/documenation/packages/myApplication-Addon1-v3
-		nx_set(NX_INSTALL_PATH_DEVELOP "develop/documentation/packages${sDevelopDir}")
+		nx_set(NX_INSTALL_PATH_DEVELOP "${sDataCross}develop/documentation/packages${sDevelopDir}")
 		# <root>/develop/lib/cmake
-		nx_set(NX_INSTALL_PATH_EXPORT "develop/lib${sLibrarySuffix}/cmake${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_EXPORT "${sLibraryCross}develop/lib${sLibrarySuffix}/cmake${sLibraryPath}")
 		# <root>/develop/headers/myApplication-Addon1-v3
-		nx_set(NX_INSTALL_PATH_INCLUDE "develop/headers${sDevelopDir}")
+		nx_set(NX_INSTALL_PATH_INCLUDE "${sDataCross}develop/headers${sDevelopDir}")
 		# <root>/develop/lib##/<arch>
-		nx_set(NX_INSTALL_PATH_STATIC "develop/lib${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_STATIC "${sLibraryCross}develop/lib${sLibrarySuffix}${sLibraryPath}")
 		# <root>/develop/sources/myApplication-Addon1-v3
-		nx_set(NX_INSTALL_PATH_SOURCE "develop/sources${sDevelopDir}")
+		nx_set(NX_INSTALL_PATH_SOURCE "${sDataCross}develop/sources${sDevelopDir}")
 		# <root>/develop/sources
-		nx_set(NX_INSTALL_PATH_PKGSRC "develop/sources")
+		nx_set(NX_INSTALL_PATH_PKGSRC "${sDataCross}develop/sources")
 	elseif(NX_TARGET_PLATFORM_MSDOS)
 		# <installdir>/BIN##/<arch>
-		nx_set(NX_INSTALL_PATH_BINARIES "BIN${sBinarySuffix}${sBinaryPath}")
+		nx_set(NX_INSTALL_PATH_BINARIES "${sBinaryCross}BIN${sBinarySuffix}${sBinaryPath}")
 
 		# installdir>/DATA
-		nx_set(NX_INSTALL_PATH_DATA "DATA")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}DATA")
 		# <installdir>/LIB##/<arch>
-		nx_set(NX_INSTALL_PATH_MODULES "LIB${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}LIB${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/ETC
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "ETC")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}ETC")
 
 		# <installdir>/LOCAL/ADDON1
-		nx_set(NX_INSTALL_PATH_LOCALDATA "LOCAL${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_LOCALDATA "${sDataCross}LOCAL${sProjectDir}")
 		# <installdir>/DOCS/ADDON1
-		nx_set(NX_INSTALL_PATH_DOCUMENTATION "DOCS${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "${sDataCross}DOCS${sProjectDir}")
 
 		# <installdir>/SDK/ADDON1-V3/DOCS
-		nx_set(NX_INSTALL_PATH_DEVELOP "SDK${sDevelopDir}/DOCS")
+		nx_set(NX_INSTALL_PATH_DEVELOP "${sDataCross}SDK${sDevelopDir}/DOCS")
 		# <installdir>/SDK/CMAKE##/<arch>
-		nx_set(NX_INSTALL_PATH_EXPORT "SDK/CMAKE${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_EXPORT "${sLibraryCross}SDK/CMAKE${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/SDK/ADDON1-V3/INCLUDE
-		nx_set(NX_INSTALL_PATH_INCLUDE "SDK${sDevelopDir}/INCLUDE")
+		nx_set(NX_INSTALL_PATH_INCLUDE "${sDataCross}SDK${sDevelopDir}/INCLUDE")
 		# <installdir>/SDK/ADDON1-V3/LIB##/<arch>
-		nx_set(NX_INSTALL_PATH_STATIC "SDK${sDevelopDir}/LIB${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_STATIC "${sLibraryCross}SDK${sDevelopDir}/LIB${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/SDK/ADDON1-V3/SRC
-		nx_set(NX_INSTALL_PATH_SOURCE "SDK${sDevelopDir}/SRC")
+		nx_set(NX_INSTALL_PATH_SOURCE "${sDataCross}SDK${sDevelopDir}/SRC")
 		# <installdir>/SRC
-		nx_set(NX_INSTALL_PATH_PKGSRC "SRC")
+		nx_set(NX_INSTALL_PATH_PKGSRC "${sDataCross}SRC")
 	elseif(NX_TARGET_PLATFORM_WINDOWS_NATIVE)
 		# <installdir>/Binaries##/<arch>
-		nx_set(NX_INSTALL_PATH_BINARIES "Binaries${sBinarySuffix}${sBinaryPath}")
+		nx_set(NX_INSTALL_PATH_BINARIES "${sBinaryCross}Binaries${sBinarySuffix}${sBinaryPath}")
 
 		# <installdir>/Data
-		nx_set(NX_INSTALL_PATH_DATA "Data")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}Data")
 		# <installdir>/Modules##/<arch>
-		nx_set(NX_INSTALL_PATH_MODULES "Modules${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}Modules${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/Settings
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "Settings")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}Settings")
 
 		# <installdir>/LocalData/Addon1
-		nx_set(NX_INSTALL_PATH_LOCALDATA "LocalData${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_LOCALDATA "${sDataCross}LocalData${sProjectDir}")
 		# <installdir>/Documentation/Addon1
-		nx_set(NX_INSTALL_PATH_DOCUMENTATION "Documentation${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "${sDataCross}Documentation${sProjectDir}")
 
 		# <installdir>/SDK/Addon1-v3/Documentation
-		nx_set(NX_INSTALL_PATH_DEVELOP "SDK${sDevelopDir}/Documentation")
+		nx_set(NX_INSTALL_PATH_DEVELOP "${sDataCross}SDK${sDevelopDir}/Documentation")
 		# <installdir>/SDK/CMake##/<arch>
-		nx_set(NX_INSTALL_PATH_EXPORT "SDK/CMake${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_EXPORT "${sLibraryCross}SDK/CMake${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/SDK/Addon1-v3/Headers
-		nx_set(NX_INSTALL_PATH_INCLUDE "SDK${sDevelopDir}/Headers")
+		nx_set(NX_INSTALL_PATH_INCLUDE "${sDataCross}SDK${sDevelopDir}/Headers")
 		# <installdir>/SDK/Addon1-v3/Libraries
-		nx_set(NX_INSTALL_PATH_STATIC "SDK${sDevelopDir}/Libraries${sLibrarySuffix}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_STATIC "${sLibraryCross}SDK${sDevelopDir}/Libraries${sLibrarySuffix}${sLibraryPath}")
 		# <installdir>/SDK/Addon1-v3/Sources
-		nx_set(NX_INSTALL_PATH_SOURCE "SDK${sDevelopDir}/Sources")
+		nx_set(NX_INSTALL_PATH_SOURCE "${sDataCross}SDK${sDevelopDir}/Sources")
 		# <installdir>/Sources
-		nx_set(NX_INSTALL_PATH_PKGSRC "Sources")
+		nx_set(NX_INSTALL_PATH_PKGSRC "${sDataCross}Sources")
 	else()
 		# <root>/bin##/<arch>
-		nx_set(NX_INSTALL_PATH_BINARIES "bin${sBinarySuffix}${sBinaryPath}")
+		nx_set(NX_INSTALL_PATH_BINARIES "${sBinaryCross}bin${sBinarySuffix}${sBinaryPath}")
 
 		# <root>/lib##/<arch>
 		if(NX_TARGET_PLATFORM_CYGWIN OR NX_TARGET_PLATFORM_WINDOWS_MINGW)
-			nx_set(NX_INSTALL_PATH_STATIC "lib${sLibrarySuffix}${sLibraryPath}")
+			nx_set(NX_INSTALL_PATH_STATIC "${sLibraryCross}lib${sLibrarySuffix}${sLibraryPath}")
 		else()
-			nx_set(NX_INSTALL_PATH_LIBRARIES "lib${sLibrarySuffix}${sLibraryPath}")
+			nx_set(NX_INSTALL_PATH_LIBRARIES "${sLibraryCross}lib${sLibrarySuffix}${sLibraryPath}")
 		endif()
 
 		# <root>/share/myapplication
-		nx_set(NX_INSTALL_PATH_DATA "share/${sApplicationName}")
+		nx_set(NX_INSTALL_PATH_DATA "${sDataCross}share/${sApplicationName}")
 		# <root>/lib##/myapplication/<arch>
-		nx_set(NX_INSTALL_PATH_MODULES "lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_MODULES "${sLibraryCross}lib${sLibrarySuffix}/${sApplicationName}${sLibraryPath}")
 		# <root>/etc/myapplication
-		nx_set(NX_INSTALL_PATH_CONFIGURATION "etc/${sApplicationName}")
+		nx_set(NX_INSTALL_PATH_CONFIGURATION "${sDataCross}etc/${sApplicationName}")
 
 		# <root>/share/myapplication-addon1
-		nx_set(NX_INSTALL_PATH_LOCALDATA "share${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_LOCALDATA "${sDataCross}share${sProjectDir}")
 		# <root>/share/doc/myapplication-addon1
-		nx_set(NX_INSTALL_PATH_DOCUMENTATION "share/doc${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_DOCUMENTATION "${sDataCross}share/doc${sProjectDir}")
 		# <root>/share/licenses/myapplication-addon1
-		nx_set(NX_INSTALL_PATH_LICENSES "share/licenses${sProjectDir}")
+		nx_set(NX_INSTALL_PATH_LICENSES "${sDataCross}share/licenses${sProjectDir}")
 
 		# <root>/lib/cmake##/<arch>
-		nx_set(NX_INSTALL_PATH_EXPORT "lib${sLibrarySuffix}/cmake${sLibraryPath}")
+		nx_set(NX_INSTALL_PATH_EXPORT "${sLibraryCross}lib${sLibrarySuffix}/cmake${sLibraryPath}")
 		# <root>/include/myapplication-addon1-3
-		nx_set(NX_INSTALL_PATH_INCLUDE "include${sDevelopDir}")
+		nx_set(NX_INSTALL_PATH_INCLUDE "${sDataCross}include${sDevelopDir}")
 		# <root>/src/myapplication-addon1-3
-		nx_set(NX_INSTALL_PATH_SOURCE "src${sDevelopDir}")
+		nx_set(NX_INSTALL_PATH_SOURCE "${sDataCross}src${sDevelopDir}")
 		# <root>/src
-		nx_set(NX_INSTALL_PATH_PKGSRC "src")
+		nx_set(NX_INSTALL_PATH_PKGSRC "${sDataCross}src")
 	endif()
 
 	if(NOT DEFINED NX_INSTALL_PATH_APPLICATIONS)
